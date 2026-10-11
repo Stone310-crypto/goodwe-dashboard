@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoodWe Monitor</title>
+<style>
+:root {
+  --bg: #0f141a;
+  --panel: #171e27;
+  --panel2: #1d2631;
+  --border: #2a3542;
+  --text: #e8edf2;
+  --muted: #8b98a5;
+  --accent: #3da9fc;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --amber: #f1c40f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  padding: 16px; min-height: 100vh;
+}
+header {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 14px;
+}
+header h1 { font-size: 20px; font-weight: 650; }
+.badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  background: var(--panel2); border: 1px solid var(--border);
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.dot.off { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.info { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.info b { color: var(--text); font-weight: 600; }
+.spacer { flex: 1; }
+section {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 14px;
+}
+section h2 { font-size: 15px; margin-bottom: 10px; color: var(--accent); font-weight: 650; }
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.toolbar input[type=search] {
+  flex: 1; min-width: 180px; max-width: 420px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 8px 12px; font-size: 14px; outline: none;
+}
+.toolbar input[type=search]:focus { border-color: var(--accent); }
+button {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #06131f; font-weight: 600; }
+.groups { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.group {
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; min-width: 210px; flex: 1;
+}
+.group > label {
+  display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 14px;
+  cursor: pointer; margin-bottom: 6px;
+}
+.group .count { color: var(--muted); font-size: 12px; font-weight: 500; }
+.field {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  padding: 3px 0; color: var(--text);
+}
+.field input { accent-color: var(--accent); cursor: pointer; }
+.field .fid { color: var(--muted); font-size: 11px; }
+.field .unit { color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.card {
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+}
+.card .cname { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.card .cval { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card .cunit { font-size: 13px; color: var(--muted); margin-left: 3px; }
+.card .cid { font-size: 10px; color: #5b6875; margin-top: 4px; font-family: monospace; }
+.card.stale .cval { color: var(--amber); }
+.empty { color: var(--muted); padding: 10px 0; font-size: 14px; }
+.chart-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 13px; max-width: 360px;
+}
+.chart-wrap { width: 100%; overflow-x: auto; }
+.chart-wrap svg { display: block; }
+.chart-meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.id { font-family: monospace; font-size: 12px; color: var(--muted); }
+details > summary { cursor: pointer; font-size: 14px; color: var(--accent); }
+details[open] > summary { margin-bottom: 10px; }
+.error-box {
+  display: none; background: #3a1d1d; border: 1px solid var(--red); color: #ffb4ac;
+  border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
+}
+@media (max-width: 640px) { .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>☀️ GoodWe Monitor</h1>
+  <span class="badge"><span id="status-dot" class="dot off"></span><span id="status-text">Offline</span></span>
+  <div class="info" id="device-info">…</div>
+  <div class="spacer"></div>
+  <div class="info" id="poll-info">…</div>
+</header>
+
+<div class="error-box" id="error-box"></div>
+
+<section id="sec-cards">
+  <h2>Messwerte <span class="info" id="cards-meta"></span></h2>
+  <div class="cards" id="cards"></div>
+</section>
+
+<section>
+  <h2>Auswahl der Statistiken</h2>
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Feld suchen (Name oder ID) …">
+    <button id="btn-all">Alle auswählen</button>
+    <button id="btn-none">Keine</button>
+    <button id="btn-default" class="primary">Standard</button>
+  </div>
+  <div class="groups" id="groups"></div>
+</section>
+
+<section>
+  <h2>Verlauf</h2>
+  <div class="chart-row">
+    <select id="chart-field"></select>
+    <select id="chart-window">
+      <option value="60">letzte Stunde</option>
+      <option value="360">letzte 6 Stunden</option>
+      <option value="1440">letzte 24 Stunden</option>
+    </select>
+    <button id="btn-refresh-chart">Aktualisieren</button>
+  </div>
+  <div class="chart-wrap" id="chart"></div>
+  <div class="chart-meta" id="chart-meta"></div>
+</section>
+
+<section>
+  <details>
+    <summary>Wechselrichter-Settings (<span id="settings-count">0</span>)</summary>
+    <table>
+      <thead><tr><th>ID</th><th>Wert</th></tr></thead>
+      <tbody id="settings-body"></tbody>
+    </table>
+  </details>
+</section>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+
+const KIND_LABELS = {
+  PV: "PV / Solar", AC: "AC-Ausgang", UPS: "Backup / Notstrom",
+  BAT: "Batterie", GRID: "Netz / Zähler", BMS: "BMS", OTHER: "Sonstiges"
+};
+
+let state = null;           // letzter /ui-api/state-Snapshot
+let selection = null;       // Set der gewählten Feld-IDs
+const LS_KEY = "goodwe.selected";
+
+function loadSelection() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) || "null");
+    if (raw && Array.isArray(raw)) { selection = new Set(raw); return; }
+  } catch (e) { /* ignorieren */ }
+  selection = new Set();
+}
+function saveSelection() {
+  localStorage.setItem(LS_KEY, JSON.stringify([...selection]));
+}
+
+function groupOf(f) {
+  return (f.kind && KIND_LABELS[f.kind]) ? f.kind : "OTHER";
+}
+function groupLabel(kind) { return KIND_LABELS[kind] || kind; }
+
+function fmt(value, numeric) {
+  if (value === null || value === undefined) return "–";
+  if (typeof value === "number") {
+    if (numeric) return value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  }
+  return String(value);
+}
+
+/* ---------- Header / Status ---------- */
+
+function renderStatus() {
+  const s = state.status;
+  const online = !!s.online;
+  $("status-dot").className = "dot " + (online ? "on" : "off");
+  $("status-text").textContent = online ? "Online" : "Offline";
+
+  const d = state.device || {};
+  const parts = [];
+  if (d.serial_number) parts.push("Seriennummer: <b>" + d.serial_number + "</b>");
+  if (d.model_name) parts.push("Modell: <b>" + d.model_name + "</b>");
+  if (d.firmware) parts.push("Firmware: <b>" + d.firmware + "</b>");
+  if (d.arm_firmware) parts.push("ARM: <b>" + d.arm_firmware + "</b>");
+  $("device-info").innerHTML = parts.join(" &nbsp;·&nbsp; ") || "Geräte-Info wird geladen …";
+
+  const age = state.last_update
+    ? Math.max(0, (Date.now() - Date.parse(state.last_update)) / 1000)
+    : null;
+  const next = state.last_update
+    ? Math.max(0, Math.round((s.poll_interval || 60) - age))
+    : "–";
+  const last = state.last_update
+    ? new Date(state.last_update).toLocaleTimeString("de-DE")
+    : "noch nie";
+  $("poll-info").innerHTML =
+    "Letzte Abfrage: <b>" + last + "</b> (Alter: " + (age === null ? "–" : Math.round(age) + " s") + ")" +
+    " &nbsp;·&nbsp; nächste in <b>" + next + " s</b>" +
+    " &nbsp;·&nbsp; OK: <b>" + s.success_count + "</b> / Fehler: <b>" + s.fail_count + "</b>";
+
+  const err = s.last_error;
+  if (!online && err) {
+    $("error-box").style.display = "block";
+    $("error-box").textContent = "⚠️ Wechselrichter nicht erreichbar (" + err + ") – automatischer Retry jede Minute.";
+  } else {
+    $("error-box").style.display = "none";
+  }
+}
+
+/* ---------- Auswahl ---------- */
+
+function renderGroups() {
+  const fields = state.fields || [];
+  const byGroup = {};
+  for (const f of fields) {
+    const g = groupOf(f);
+    (byGroup[g] = byGroup[g] || []).push(f);
+  }
+  const order = ["PV", "AC", "UPS", "BAT", "GRID", "BMS", "OTHER"].filter(g => byGroup[g]);
+
+  const groupsEl = $("groups");
+  groupsEl.innerHTML = "";
+  for (const g of order) {
+    const list = byGroup[g];
+    const div = document.createElement("div");
+    div.className = "group";
+    div.dataset.group = g;
+
+    const gbox = document.createElement("input");
+    gbox.type = "checkbox";
+    gbox.id = "grp-" + g;
+    gbox.checked = list.some(f => selection.has(f.id));
+    gbox.addEventListener("change", () => {
+      for (const f of list) {
+        if (gbox.checked) selection.add(f.id); else selection.delete(f.id);
+      }
+      saveSelection(); renderGroups(); renderCards();
+    });
+
+    const label = document.createElement("label");
+    label.htmlFor = gbox.id;
+    label.appendChild(gbox);
+    label.appendChild(document.createTextNode(groupLabel(g)));
+    const cnt = document.createElement("span");
+    cnt.className = "count";
+    cnt.textContent = " (" + list.length + ")";
+    label.appendChild(cnt);
+    div.appendChild(label);
+
+    for (const f of list) {
+      const row = document.createElement("div");
+      row.className = "field";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = "fld-" + f.id;
+      cb.checked = selection.has(f.id);
+      cb.addEventListener("change", () => {
+        if (cb.checked) selection.add(f.id); else selection.delete(f.id);
+        saveSelection(); renderGroups(); renderCards();
+      });
+      const l2 = document.createElement("label");
+      l2.htmlFor = cb.id;
+      l2.appendChild(cb);
+      l2.appendChild(document.createTextNode(f.name + " "));
+      const fid = document.createElement("span");
+      fid.className = "fid";
+      fid.textContent = f.id;
+      l2.appendChild(fid);
+      if (f.unit) {
+        const u = document.createElement("span");
+        u.className = "unit";
+        u.textContent = " [" + f.unit + "]";
+        l2.appendChild(u);
+      }
+      row.appendChild(l2);
+      div.appendChild(row);
+    }
+    groupsEl.appendChild(div);
+  }
+}
+
+/* ---------- Karten ---------- */
+
+function renderCards() {
+  const fields = (state.fields || []).filter(f => selection.has(f.id));
+  const stale = state.last_update
+    ? (Date.now() - Date.parse(state.last_update)) / 1000 > 180
+    : false;
+
+  $("cards-meta").textContent = " · " + fields.length + " von " + (state.fields || []).length + " ausgewählt";
+
+  const cards = $("cards");
+  cards.innerHTML = "";
+  if (fields.length === 0) {
+    cards.innerHTML = '<div class="empty">Keine Felder ausgewählt – wähle unten Statistiken aus.</div>';
+    return;
+  }
+  const runtime = state.runtime || {};
+  for (const f of fields) {
+    const v = runtime[f.id];
+    const div = document.createElement("div");
+    div.className = "card" + (stale ? " stale" : "");
+    div.innerHTML =
+      '<div class="cname">' + f.name + '</div>' +
+      '<div class="cval">' + fmt(v, f.numeric) + (f.unit ? '<span class="cunit">' + f.unit + '</span>' : '') + '</div>' +
+      '<div class="cid">' + f.id + '</div>';
+    cards.appendChild(div);
+  }
+}
+
+/* ---------- Settings ---------- */
+
+function renderSettings() {
+  const s = state.settings || {};
+  const keys = Object.keys(s).sort();
+  $("settings-count").textContent = keys.length;
+  const tbody = $("settings-body");
+  tbody.innerHTML = "";
+  for (const k of keys) {
+    const tr = document.createElement("tr");
+    const td1 = document.createElement("td"); td1.className = "id"; td1.textContent = k;
+    const td2 = document.createElement("td"); td2.textContent = fmt(s[k], false);
+    tr.appendChild(td1); tr.appendChild(td2);
+    tbody.appendChild(tr);
+  }
+}
+
+/* ---------- Verlauf / Chart ---------- */
+
+function renderChartSelect() {
+  const sel = $("chart-field");
+  const numeric = (state.fields || []).filter(f => f.numeric);
+  const cur = sel.value;
+  sel.innerHTML = "";
+  for (const f of numeric) {
+    const o = document.createElement("option");
+    o.value = f.id;
+    o.textContent = f.name + " (" + f.id + ")" + (f.unit ? " [" + f.unit + "]" : "");
+    sel.appendChild(o);
+  }
+  if (cur && numeric.some(f => f.id === cur)) sel.value = cur;
+}
+
+async function renderChart() {
+  const fieldId = $("chart-field").value;
+  const minutes = parseInt($("chart-window").value, 10);
+  const wrap = $("chart");
+  const meta = $("chart-meta");
+  if (!fieldId) { wrap.innerHTML = ""; meta.textContent = ""; return; }
+
+  let data;
+  try {
+    const r = await fetch("/ui-api/history?fields=" + encodeURIComponent(fieldId)
+      + "&minutes=" + minutes + "&max_points=400");
+    data = await r.json();
+  } catch (e) {
+    meta.textContent = "Fehler beim Laden der Historie: " + e;
+    return;
+  }
+
+  const pts = data.points
+    .map(p => ({ t: p.ts, v: p.values[fieldId] }))
+    .filter(p => typeof p.v === "number" && isFinite(p.v));
+  if (pts.length === 0) {
+    wrap.innerHTML = '<div class="empty">Noch keine Daten in der Historie (Polling läuft alle 60 s).</div>';
+    meta.textContent = "";
+    return;
+  }
+
+  const W = 1100, H = 260, padL = 58, padR = 14, padT = 12, padB = 30;
+  let lo = Math.min(...pts.map(p => p.v));
+  let hi = Math.max(...pts.map(p => p.v));
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+  const x = (t) => padL + (t - t0) / (t1 - t0) * (W - padL - padR);
+  const y = (v) => padT + (hi - v) / (hi - lo) * (H - padT - padB);
+
+  let path = "";
+  pts.forEach((p, i) => { path += (i ? " L" : "M") + x(p.t).toFixed(1) + " " + y(p.v).toFixed(1); });
+
+  const gridLines = [lo, (lo + hi) / 2, hi].map(v =>
+    '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(v).toFixed(1) +
+    '" y2="' + y(v).toFixed(1) + '" stroke="#2a3542" stroke-dasharray="4 4"/>' +
+    '<text x="' + (padL - 8) + '" y="' + (y(v) + 4).toFixed(1) +
+    '" fill="#8b98a5" font-size="11" text-anchor="end">' + v.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + "</text>"
+  ).join("");
+
+  const tLabels = [t0, (t0 + t1) / 2, t1].map(t =>
+    '<text x="' + x(t).toFixed(1) + '" y="' + (H - 8) +
+    '" fill="#8b98a5" font-size="11" text-anchor="middle">' +
+    new Date(t * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) + "</text>"
+  ).join("");
+
+  wrap.innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="min-width:640px">' +
+    '<rect x="' + padL + '" y="' + padT + '" width="' + (W - padL - padR) + '" height="' + (H - padT - padB) + '" fill="#0f141a"/>' +
+    gridLines +
+    '<path d="' + path + '" fill="none" stroke="#3da9fc" stroke-width="2"/>' +
+    tLabels +
+    "</svg>";
+
+  const f = (state.fields || []).find(x => x.id === fieldId);
+  meta.textContent = pts.length + " Messpunkte · min " + lo.toLocaleString("de-DE") +
+    " · max " + hi.toLocaleString("de-DE") + (f && f.unit ? " " + f.unit : "") +
+    " · aktuell: " + fmt(pts[pts.length - 1].v, true) + (f && f.unit ? " " + f.unit : "");
+}
+
+/* ---------- Laden / Refresh ---------- */
+
+async function refresh() {
+  try {
+    const r = await fetch("/ui-api/state");
+    const newState = await r.json();
+    const first = state === null;
+    state = newState;
+    if (first) {
+      // Standard-Auswahl: alle numerischen Kernfelder, beim ersten Start alles
+      if (selection.size === 0) {
+        for (const f of state.fields) selection.add(f.id);
+        saveSelection();
+      }
+      renderGroups();
+      renderChartSelect();
+    }
+    renderStatus();
+    renderCards();
+    renderSettings();
+    renderChartSelect(); // Feldliste kann sich erweitern
+  } catch (e) {
+    $("error-box").style.display = "block";
+    $("error-box").textContent = "⚠️ Verbindung zum WebUI-Server fehlgeschlagen: " + e;
+  }
+}
+
+$("btn-all").addEventListener("click", () => {
+  for (const f of state.fields || []) selection.add(f.id);
+  saveSelection(); renderGroups(); renderCards();
+});
+$("btn-none").addEventListener("click", () => {
+  selection.clear(); saveSelection(); renderGroups(); renderCards();
+});
+$("btn-default").addEventListener("click", () => {
+  selection.clear();
+  const CORE = ["battery_soc", "pbattery1", "ppv", "active_power", "house_consumption", "e_total", "e_day", "vgrid", "temperature", "battery_charge_limit"];
+  for (const f of state.fields || []) if (CORE.includes(f.id)) selection.add(f.id);
+  saveSelection(); renderGroups(); renderCards();
+});
+$("btn-refresh-chart").addEventListener("click", renderChart);
+$("chart-field").addEventListener("change", renderChart);
+$("chart-window").addEventListener("change", renderChart);
+$("search").addEventListener("input", (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  document.querySelectorAll(".group .field").forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+  });
+});
+
+loadSelection();
+refresh();
+renderChart();
+setInterval(refresh, 10000); // UI alle 10 s aktualisieren (Polling bleibt bei 60 s)
+</script>
+</body>
+</html>
