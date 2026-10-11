@@ -2,17 +2,24 @@
 
 Bewusst ein langsamer Loop (Standard: 60 s), um nicht in Rate-Limits
 des Wechselrichters zu laufen.
+
+Die Verbindung zum Wechselrichter bleibt über die Polls hinweg offen:
+die goodwe-Bibliothek merkt sich dabei intern, welche Sensoren/Settings
+die Firmware nicht unterstützt (ILLEGAL DATA ADDRESS), und fragt diese
+nicht erneut an. Nur bei einem Fehler wird die Verbindung verworfen und
+beim nächsten Poll neu aufgebaut.
 """
 
 import asyncio
 import logging
+import time
 
 import goodwe
 
 import config
 from datastore import DataStore
 
-log = logging.getLogger("goodwe.poller")
+log = logging.getLogger("poller")
 
 
 def build_fields(runtime, sensors) -> list:
@@ -55,10 +62,15 @@ def build_fields(runtime, sensors) -> list:
     return fields
 
 
-async def _poll_once(store: DataStore) -> None:
-    store.begin_poll()
-    try:
-        inverter = await goodwe.connect(
+class Poller:
+    def __init__(self, store: DataStore) -> None:
+        self.store = store
+        self.inverter = None
+        self._poll_index = 0
+        self._reported_unsupported: set = set()
+
+    async def _connect(self):
+        return await goodwe.connect(
             config.INVERTER_IP,
             port=config.INVERTER_PORT,
             family=config.INVERTER_FAMILY,
@@ -66,48 +78,93 @@ async def _poll_once(store: DataStore) -> None:
             retries=config.INVERTER_RETRIES,
         )
 
-        runtime = await inverter.read_runtime_data()
-
-        settings = {}
+    async def poll_once(self) -> None:
+        self.store.begin_poll()
+        self._poll_index += 1
+        started = time.monotonic()
         try:
-            settings = await inverter.read_settings_data()
-        except Exception as exc:  # Settings werden nicht von allen Modellen unterstützt
+            if self.inverter is None:
+                log.info(
+                    "Verbinde mit Wechselrichter %s (Port %s) …",
+                    config.INVERTER_IP,
+                    config.INVERTER_PORT,
+                )
+                self.inverter = await self._connect()
+
+            # Runtime-Werte sind Pflicht – ohne sie gilt der Poll als fehlgeschlagen
+            runtime = await self.inverter.read_runtime_data()
+
+            # Settings ändern sich selten → nur alle N Polls lesen
+            settings: dict = {}
+            unsupported: list = []
+            if self._poll_index % max(1, config.SETTINGS_INTERVAL) == 0:
+                settings, unsupported = await self._read_settings()
+
+            device: dict = {}
+            try:
+                device = await self.inverter.read_device_info()
+            except Exception as exc:
+                log.warning("Geräte-Info konnte nicht gelesen werden: %s", exc)
+
+            sensors = ()
+            try:
+                sensors = self.inverter.sensors()
+            except Exception as exc:
+                log.warning("Sensor-Definitionen konnten nicht gelesen werden: %s", exc)
+
+            fields = build_fields(runtime, sensors)
+
+            # Nicht unterstützte Settings nur einmal pro Lauf melden
+            new_unsupported = [u for u in unsupported if u not in self._reported_unsupported]
+            if new_unsupported:
+                log.warning(
+                    "Settings von der Firmware abgelehnt (werden ignoriert): %s",
+                    ", ".join(sorted(new_unsupported)),
+                )
+                self._reported_unsupported.update(new_unsupported)
+
+            self.store.update(
+                runtime=runtime,
+                settings=settings,
+                device=device,
+                fields=fields,
+                unsupported_settings=sorted(unsupported),
+            )
+            log.info(
+                "Poll OK: %d Runtime-Werte, %d Settings, %d Felder (%.1f s)",
+                len(runtime),
+                len(settings),
+                len(fields),
+                time.monotonic() - started,
+            )
+        except Exception as exc:
+            log.error("Poll fehlgeschlagen: %s", exc)
+            # Verbindung verwerfen – beim nächsten Poll wird neu verbunden
+            self.inverter = None
+            self.store.set_error(str(exc))
+
+    async def _read_settings(self) -> tuple[dict, list]:
+        """Liest die Settings; nicht unterstützte Einträge werden aussortiert."""
+        try:
+            raw = await self.inverter.read_settings_data()
+        except Exception as exc:
+            # Nicht kritisch: Settings werden nicht von allen Modellen unterstützt
             log.warning("Settings konnten nicht gelesen werden: %s", exc)
+            return {}, []
+        settings = {k: v for k, v in raw.items() if v is not None}
+        unsupported = sorted(k for k, v in raw.items() if v is None)
+        return settings, unsupported
 
-        device = {}
-        try:
-            device = await inverter.read_device_info()
-        except Exception as exc:
-            log.warning("Geräte-Info konnte nicht gelesen werden: %s", exc)
-
-        sensors = ()
-        try:
-            sensors = inverter.sensors()
-        except Exception as exc:
-            log.warning("Sensor-Definitionen konnten nicht gelesen werden: %s", exc)
-
-        fields = build_fields(runtime, sensors)
-        store.update(runtime=runtime, settings=settings, device=device, fields=fields)
-        log.info(
-            "Poll OK: %d Runtime-Werte, %d Settings, %d Felder",
-            len(runtime),
-            len(settings),
-            len(fields),
-        )
-    except Exception as exc:
-        log.error("Poll fehlgeschlagen: %s", exc)
-        store.set_error(str(exc))
-
-
-async def poll_loop(store: DataStore) -> None:
-    """Endlosschleife: sofortige erste Abfrage, danach alle POLL_INTERVAL Sekunden."""
-    while True:
-        started = asyncio.get_running_loop().time()
-        await _poll_once(store)
-        elapsed = asyncio.get_running_loop().time() - started
-        await asyncio.sleep(max(1, config.POLL_INTERVAL - elapsed))
+    async def run(self) -> None:
+        """Endlosschleife: sofortige erste Abfrage, danach alle POLL_INTERVAL Sekunden."""
+        while True:
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            await self.poll_once()
+            elapsed = loop.time() - started
+            await asyncio.sleep(max(1, config.POLL_INTERVAL - elapsed))
 
 
 def run(store: DataStore) -> None:
     """Einstiegspunkt für den Poller-Thread."""
-    asyncio.run(poll_loop(store))
+    asyncio.run(Poller(store).run())

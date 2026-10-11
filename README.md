@@ -42,6 +42,7 @@ Danach:
 | `GOODWE_TIMEOUT` | `5` | Timeout pro Verbindungsversuch (s) |
 | `GOODWE_RETRIES` | `3` | Anzahl Verbindungsversuche |
 | `GOODWE_POLL_INTERVAL` | `60` | Abfrage-Intervall in Sekunden |
+| `GOODWE_SETTINGS_INTERVAL` | `5` | Settings nur alle N Polls lesen (sie ändern sich selten) |
 | `GOODWE_HISTORY_SIZE` | `1440` | Gespeicherte Messpunkte (1440 = 24 h bei 60 s) |
 | `GOODWE_UI_HOST` / `GOODWE_UI_PORT` | `0.0.0.0` / `8080` | WebUI-Bindung |
 | `GOODWE_API_HOST` / `GOODWE_API_PORT` | `0.0.0.0` / `8000` | API-Bindung |
@@ -74,6 +75,14 @@ CORS ist für die API freigeschaltet, damit andere Server sie direkt abfragen k�
 - Der Verlauf zeigt bis zu 24 h Historie für ein frei wählbares numerisches Feld.
 - Ist der Wechselrichter nicht erreichbar, bleibt die Seite erreichbar und
   versucht jede Minute automatisch erneut.
+
+## Umgang mit nicht unterstützten Settings
+
+Manche GoodWe-Firmwares lehnen einzelne Settings ab (`ILLEGAL DATA ADDRESS`).
+Die Verbindung zum Wechselrichter bleibt deshalb über die Polls hinweg offen:
+die Bibliothek merkt sich abgelehnte Settings und fragt sie nicht erneut an.
+Sie werden einmal pro Lauf im Log gemeldet und in der WebUI unter
+„Wechselrichter-Settings“ als „abgelehnt“ angezeigt.
 
 ## Als systemd-Service (optional)
 

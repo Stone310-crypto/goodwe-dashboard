@@ -29,6 +29,7 @@ class DataStore:
         self._runtime: Dict[str, Any] = {}
         self._settings: Dict[str, Any] = {}
         self._fields: list = []
+        self._unsupported_settings: list = []
         self._history: Deque[Dict[str, Any]] = deque(maxlen=history_size)
 
     # ---------- Schreibseite (Poller) ----------
@@ -43,12 +44,14 @@ class DataStore:
         settings: Dict[str, Any],
         device: Dict[str, Any],
         fields: list,
+        unsupported_settings: Optional[list] = None,
     ) -> None:
         with self._lock:
             self._runtime = runtime
             self._settings = settings
             self._device = device
             self._fields = fields
+            self._unsupported_settings = list(unsupported_settings or [])
             self._status["online"] = True
             self._status["last_error"] = None
             self._status["success_count"] += 1
@@ -85,6 +88,7 @@ class DataStore:
             device = dict(self._device)
             fields = [dict(f) for f in self._fields]
             status = dict(self._status)
+            unsupported_settings = list(self._unsupported_settings)
             last_ts = self._history[-1]["iso"] if self._history else None
         return {
             "status": status,
@@ -93,6 +97,7 @@ class DataStore:
             "fields": fields,
             "runtime": runtime,
             "settings": settings,
+            "unsupported_settings": unsupported_settings,
         }
 
     def history(self, minutes: Optional[int] = None, max_points: Optional[int] = None) -> list:

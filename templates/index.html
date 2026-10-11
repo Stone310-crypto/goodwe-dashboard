@@ -157,6 +157,7 @@ details[open] > summary { margin-bottom: 10px; }
       <thead><tr><th>ID</th><th>Wert</th></tr></thead>
       <tbody id="settings-body"></tbody>
     </table>
+    <div class="chart-meta" id="settings-unsupported"></div>
   </details>
 </section>
 
@@ -343,7 +344,11 @@ function renderCards() {
 function renderSettings() {
   const s = state.settings || {};
   const keys = Object.keys(s).sort();
-  $("settings-count").textContent = keys.length;
+  const unsup = state.unsupported_settings || [];
+  $("settings-count").textContent = keys.length + (unsup.length ? " · " + unsup.length + " abgelehnt" : "");
+  $("settings-unsupported").textContent = unsup.length
+    ? "Von der Firmware abgelehnt (nicht unterstützt): " + unsup.join(", ")
+    : "";
   const tbody = $("settings-body");
   tbody.innerHTML = "";
   for (const k of keys) {

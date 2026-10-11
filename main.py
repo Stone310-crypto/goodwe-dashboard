@@ -20,7 +20,7 @@ from api import create_app as create_api_app
 from datastore import DataStore
 from webui import run as run_webui
 
-log = logging.getLogger("goodwe.service")
+log = logging.getLogger("service")
 
 
 def main() -> None:
@@ -28,6 +28,12 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
+
+    # Interne Tracebacks der goodwe-Bibliothek ausblenden (z. B. bei
+    # nicht unterstützten Settings) – der Poller protokolliert kompakt selbst.
+    logging.getLogger("goodwe").setLevel(logging.CRITICAL)
+    # Flask/Zugriffslog reduzieren
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
     store = DataStore(
         history_size=config.HISTORY_SIZE,

@@ -24,6 +24,9 @@ INVERTER_RETRIES = _int("GOODWE_RETRIES", 3)
 # Polling-Loop (Abfrage alle X Sekunden – Standard 60 s, um Rate-Limits zu vermeiden)
 POLL_INTERVAL = _int("GOODWE_POLL_INTERVAL", 60)
 
+# Settings ändern sich selten: nur alle N Polls lesen (Standard: alle 5 Minuten)
+SETTINGS_INTERVAL = _int("GOODWE_SETTINGS_INTERVAL", 5)
+
 # Historie: Anzahl gespeicherter Messpunkte (bei 60 s Intervall = 1440 Punkte = 24 h)
 HISTORY_SIZE = _int("GOODWE_HISTORY_SIZE", 1440)
 
