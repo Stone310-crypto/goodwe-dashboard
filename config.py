@@ -37,3 +37,10 @@ UI_PORT = _int("GOODWE_UI_PORT", 8080)
 # API (FastAPI)
 API_HOST = _str("GOODWE_API_HOST", "0.0.0.0")
 API_PORT = _int("GOODWE_API_PORT", 8000)
+
+# MCP-Server (Model Context Protocol) – Datenquelle für WebGUI & LLM-Clients
+MCP_HOST = _str("GOODWE_MCP_HOST", "0.0.0.0")
+MCP_PORT = _int("GOODWE_MCP_PORT", 8001)
+
+# SQLite-Datei für die persistente Historie (überlebt Server-Neustarts)
+DB_PATH = _str("GOODWE_DB_PATH", "goodwe_history.db")

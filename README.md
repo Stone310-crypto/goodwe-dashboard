@@ -1,18 +1,21 @@
 # GoodWe Monitor (Service)
 
-Überwacht einen GoodWe-Wechselrichter im Netzwerk und stellt die Daten als
-WebUI und HTTP-API bereit.
+Überwacht einen GoodWe-Wechselrichter im Netzwerk. Der Dienst sammelt die
+Daten in einem Polling-Loop und stellt sie über einen **MCP-Server** als
+zentrale Datenquelle bereit; WebGUI und andere Server holen sich ihre Daten
+von dort. Die Historie wird in SQLite persistiert und übersteht Neustarts.
 
 ## Komponenten
 
 | Komponente | Technik | Port (Standard) | Zweck |
 |---|---|---|---|
 | Poller-Loop | `asyncio` + `goodwe` | – | Fragt den Wechselrichter alle 60 s ab (langsamer Loop gegen Rate-Limits) |
-| WebUI | Flask | `8080` (`0.0.0.0`) | Statusseite, Statistiken einzeln/gruppenweise auswählbar, Verlaufs-Chart |
-| API | FastAPI | `8000` (`0.0.0.0`) | HTTP-API für andere Server, interaktive Doku unter `/docs` |
+| MCP-Server | `mcp` (Streamable HTTP, stateless) | `8001` (`0.0.0.0`) | Zentrale Datenquelle: Tools `get_all`, `get_status`, `get_data`, `get_settings`, `get_fields`, `get_history` |
+| WebUI | Flask | `8080` (`0.0.0.0`) | Reiner Client: liefert HTML und ruft alle Daten per MCP-Tool-Call ab |
+| API | FastAPI | `8000` (`0.0.0.0`) | Zusätzliche REST-API für andere Server, Doku unter `/docs` |
 
-Alle drei laufen in eigenen Threads innerhalb eines Prozesses und teilen sich
-einen thread-sicheren [DataStore](datastore.py).
+Alle Komponenten laufen in eigenen Threads innerhalb eines Prozesses und
+teilen sich einen thread-sicheren [DataStore](datastore.py) (SQLite-Historie).
 
 ## Installation
 
@@ -30,13 +33,37 @@ python3 -m venv venv
 Danach:
 
 - WebUI: `http://<server-ip>:8080/`
+- MCP-Server: `http://<server-ip>:8001/mcp`
 - API: `http://<server-ip>:8000/` → Doku unter `http://<server-ip>:8000/docs`
+
+## MCP-Server
+
+Der MCP-Endpoint (`POST /mcp`) ist stateless mit JSON-Antworten und CORS –
+die WebGUI ruft ihn direkt per `tools/call` auf. LLM-Clients können den
+Server ebenfalls einbinden, z. B.:
+
+```json
+{"mcpServers": {
+  "goodwe": {"url": "http://<server-ip>:8001/mcp"}
+}}
+```
+
+Verfügbare Tools:
+
+| Tool | Beschreibung |
+|---|---|
+| `get_all` | Kompletter Schnappschuss (Status, Gerät, Felder, Werte, Settings) |
+| `get_status` | Verbindungsstatus, Zähler, Geräte-Info, letzte Aktualisierung |
+| `get_data` | Aktuelle Runtime-Werte (`feld → Wert`) |
+| `get_settings` | Aktuell unterstützte Wechselrichter-Settings |
+| `get_fields` | Feld-Metadaten (Name, Einheit, Kategorie, aktueller Wert) |
+| `get_history` | Historie; Args: `fields`, `minutes`, `max_points` |
 
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `GOODWE_IP` | `192.168.1.108` | IP des Wechselrichters |
+| `GOODWE_IP` | `192.168.1.105` | IP des Wechselrichters |
 | `GOODWE_PORT` | `8899` | TCP-Port des Wechselrichters |
 | `GOODWE_FAMILY` | leer | Protokoll-Familie (`ES`/`ET`/…); leer = automatische Erkennung per Discovery |
 | `GOODWE_TIMEOUT` | `5` | Timeout pro Verbindungsversuch (s) |
@@ -46,8 +73,10 @@ Danach:
 | `GOODWE_HISTORY_SIZE` | `1440` | Gespeicherte Messpunkte (1440 = 24 h bei 60 s) |
 | `GOODWE_UI_HOST` / `GOODWE_UI_PORT` | `0.0.0.0` / `8080` | WebUI-Bindung |
 | `GOODWE_API_HOST` / `GOODWE_API_PORT` | `0.0.0.0` / `8000` | API-Bindung |
+| `GOODWE_MCP_HOST` / `GOODWE_MCP_PORT` | `0.0.0.0` / `8001` | MCP-Server-Bindung |
+| `GOODWE_DB_PATH` | `goodwe_history.db` | SQLite-Datei für die persistente Historie |
 
-## API-Endpunkte
+## API-Endpunkte (FastAPI, optional)
 
 | Endpunkt | Beschreibung |
 |---|---|
@@ -58,16 +87,11 @@ Danach:
 | `GET /api/fields` | Feld-Metadaten (Name, Einheit, Kategorie, aktueller Wert) |
 | `GET /api/history` | Historie, z. B. `?fields=battery_soc,ppv&minutes=60&max_points=400` |
 
-Beispiel:
-
-```bash
-curl "http://<server-ip>:8000/api/history?fields=battery_soc&minutes=120"
-```
-
-CORS ist für die API freigeschaltet, damit andere Server sie direkt abfragen können.
+CORS ist für API und MCP freigeschaltet.
 
 ## WebUI
 
+- Reiner Client: lädt keine Daten über Flask, sondern ruft die MCP-Tools auf.
 - Zeigt alle auslesbaren Werte (Runtime, Settings, Geräte-Info).
 - Statistiken lassen sich über Checkboxen einzeln oder gruppenweise
   (PV, AC, Batterie, Netz, …) auswählen; die Auswahl wird im Browser gespeichert.
@@ -75,6 +99,8 @@ CORS ist für die API freigeschaltet, damit andere Server sie direkt abfragen k�
 - Der Verlauf zeigt bis zu 24 h Historie für ein frei wählbares numerisches Feld.
 - Ist der Wechselrichter nicht erreichbar, bleibt die Seite erreichbar und
   versucht jede Minute automatisch erneut.
+- Die Historie liegt in SQLite – nach einem Neustart der Seite oder des
+  Dienstes werden die Daten weiterhin geliefert.
 
 ## Umgang mit nicht unterstützten Settings
 

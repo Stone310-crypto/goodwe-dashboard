@@ -385,11 +385,9 @@ async function renderChart() {
 
   let data;
   try {
-    const r = await fetch("/ui-api/history?fields=" + encodeURIComponent(fieldId)
-      + "&minutes=" + minutes + "&max_points=400");
-    data = await r.json();
+    data = await mcpCall("get_history", { fields: fieldId, minutes: minutes, max_points: 400 });
   } catch (e) {
-    meta.textContent = "Fehler beim Laden der Historie: " + e;
+    meta.textContent = "Fehler beim Laden der Historie: " + e.message;
     return;
   }
 
@@ -440,28 +438,50 @@ async function renderChart() {
     " · aktuell: " + fmt(pts[pts.length - 1].v, true) + (f && f.unit ? " " + f.unit : "");
 }
 
-/* ---------- Laden / Refresh ---------- */
+/* ---------- MCP-Client ---------- */
 
-async function fetchState() {
+const MCP_BASE = "{{ mcp_base }}";
+let mcpReqId = 0;
+
+async function mcpCall(tool, args) {
   let r;
   try {
-    r = await fetch("/ui-api/state", { cache: "no-store" });
+    r = await fetch(MCP_BASE, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: ++mcpReqId,
+        method: "tools/call",
+        params: { name: tool, arguments: args || {} },
+      }),
+    });
   } catch (e) {
-    throw new Error("Server nicht erreichbar. Läuft der Dienst? Start: python main.py");
+    throw new Error("MCP-Server nicht erreichbar. Läuft der Dienst? Start: python main.py");
   }
   if (!r.ok) {
-    throw new Error("Server antwortet mit Status " + r.status + " – läuft die aktuelle Version des Dienstes?");
+    throw new Error("MCP-Server antwortet mit Status " + r.status + " – läuft die aktuelle Version des Dienstes?");
   }
-  const type = r.headers.get("content-type") || "";
-  if (!type.includes("application/json")) {
-    throw new Error("Unerwartete Antwort vom Server (kein JSON, Status " + r.status + ").");
+  const data = await r.json();
+  if (data.error) {
+    throw new Error("MCP-Fehler: " + (data.error.message || JSON.stringify(data.error)));
   }
-  return r.json();
+  const result = data.result || {};
+  if (result.structuredContent !== undefined && result.structuredContent !== null) {
+    return result.structuredContent;
+  }
+  const text = (result.content || []).map(c => c.text || "").join("");
+  if (text) {
+    try { return JSON.parse(text); } catch (e) { return text; }
+  }
+  return result;
 }
+
+/* ---------- Laden / Refresh ---------- */
 
 async function refresh() {
   try {
-    const newState = await fetchState();
+    const newState = await mcpCall("get_all");
     const first = state === null;
     state = newState;
     if (first) {
@@ -479,7 +499,7 @@ async function refresh() {
     renderChartSelect(); // Feldliste kann sich erweitern
   } catch (e) {
     $("error-box").style.display = "block";
-    $("error-box").textContent = "⚠️ Verbindung zum WebUI-Server fehlgeschlagen: " + e.message;
+    $("error-box").textContent = "⚠️ Verbindung zum MCP-Server fehlgeschlagen: " + e.message;
   }
 }
 

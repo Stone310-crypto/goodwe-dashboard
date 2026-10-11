@@ -1,5 +1,12 @@
-"""Thread-sicherer gemeinsamer Datenspeicher: Poller schreibt, WebUI/API lesen."""
+"""Thread-sicherer gemeinsamer Datenspeicher: Poller schreibt, WebUI/API/MCP lesen.
 
+Die Historie wird optional in SQLite persistiert, damit sie Server-Neustarts
+übersteht und weiter geliefert werden kann.
+"""
+
+import json
+import logging
+import sqlite3
 import threading
 import time
 from collections import deque
@@ -7,6 +14,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Deque, Dict, Optional
+
+log = logging.getLogger("datastore")
 
 
 def _now_iso() -> str:
@@ -37,7 +46,12 @@ def _jsonable(value: Any) -> Any:
 
 
 class DataStore:
-    def __init__(self, history_size: int = 1440, poll_interval: int = 60) -> None:
+    def __init__(
+        self,
+        history_size: int = 1440,
+        poll_interval: int = 60,
+        db_path: Optional[str] = None,
+    ) -> None:
         self._lock = threading.Lock()
         self._history_size = history_size
         self._status: Dict[str, Any] = {
@@ -57,11 +71,54 @@ class DataStore:
         self._unsupported_settings: list = []
         self._history: Deque[Dict[str, Any]] = deque(maxlen=history_size)
 
+        # Persistente Historie (SQLite) – überlebt Neustarts des Dienstes
+        self._db: Optional[sqlite3.Connection] = None
+        if db_path:
+            self._load_history_db(db_path)
+
     # ---------- Schreibseite (Poller) ----------
 
     def begin_poll(self) -> None:
         with self._lock:
             self._status["poll_count"] += 1
+
+    def _load_history_db(self, db_path: str) -> None:
+        try:
+            self._db = sqlite3.connect(db_path, check_same_thread=False)
+            self._db.execute(
+                'CREATE TABLE IF NOT EXISTS history '
+                '(ts REAL PRIMARY KEY, iso TEXT NOT NULL, "values" TEXT NOT NULL)'
+            )
+            self._db.commit()
+            rows = self._db.execute(
+                'SELECT ts, iso, "values" FROM history ORDER BY ts DESC LIMIT ?',
+                (self._history_size,),
+            ).fetchall()
+            for ts, iso, values in reversed(rows):
+                self._history.append({"ts": ts, "iso": iso, "values": json.loads(values)})
+            if rows:
+                log.info("Historie aus %s geladen: %d Messpunkte", db_path, len(rows))
+        except Exception as exc:
+            log.warning("Historie konnte nicht aus %s geladen werden: %s", db_path, exc)
+            self._db = None
+
+    def _persist_history_point(self, point: Dict[str, Any]) -> None:
+        if self._db is None:
+            return
+        try:
+            self._db.execute(
+                'INSERT OR REPLACE INTO history (ts, iso, "values") VALUES (?, ?, ?)',
+                (point["ts"], point["iso"], json.dumps(point["values"])),
+            )
+            # Alte Punkte außerhalb des Ringpuffers aufräumen
+            self._db.execute(
+                "DELETE FROM history WHERE ts < "
+                "(SELECT ts FROM history ORDER BY ts DESC LIMIT 1 OFFSET ?)",
+                (max(0, self._history_size - 1),),
+            )
+            self._db.commit()
+        except Exception as exc:
+            log.warning("Messpunkt konnte nicht in DB geschrieben werden: %s", exc)
 
     def update(
         self,
@@ -96,6 +153,7 @@ class DataStore:
                     "values": numeric,
                 }
             )
+            self._persist_history_point(self._history[-1])
 
     def set_error(self, message: str) -> None:
         with self._lock:

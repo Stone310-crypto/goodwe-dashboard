@@ -2,3 +2,4 @@ goodwe
 flask
 fastapi
 uvicorn
+mcp

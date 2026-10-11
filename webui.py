@@ -1,11 +1,13 @@
 """Flask-WebUI: Statusseite mit wählbaren Statistiken.
 
-Die Seite lädt ihre Daten über same-origin-Endpunkte (/ui-api/…),
-damit sie ohne CORS-Probleme von jedem Gerät im Netz erreichbar ist.
+Die Seite ist nur noch ein dünner Client: Sie liefert das HTML aus und
+ruft alle Daten über MCP-Tool-Calls vom MCP-Server ab (gleicher Host,
+MCP-Port aus der Konfiguration).
 """
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, render_template, request
 
+import config
 from datastore import DataStore
 
 
@@ -14,21 +16,11 @@ def create_app(store: DataStore) -> Flask:
 
     @app.get("/")
     def index():
-        return render_template("index.html")
-
-    @app.get("/ui-api/state")
-    def state():
-        return jsonify(store.snapshot())
-
-    @app.get("/ui-api/history")
-    def history():
-        return jsonify(
-            store.history_series(
-                fields=request.args.get("fields"),
-                minutes=int(request.args["minutes"]) if request.args.get("minutes") else None,
-                max_points=int(request.args["max_points"]) if request.args.get("max_points") else None,
-            )
-        )
+        # Host aus dem Request übernehmen (funktioniert über LAN/Tailscale),
+        # Port des MCP-Servers aus der Konfiguration.
+        host = request.host.rsplit(":", 1)[0]
+        mcp_base = f"{request.scheme}://{host}:{config.MCP_PORT}/mcp"
+        return render_template("index.html", mcp_base=mcp_base)
 
     return app
 
