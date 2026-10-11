@@ -94,6 +94,8 @@ class Poller:
 
             # Runtime-Werte sind Pflicht – ohne sie gilt der Poll als fehlgeschlagen
             runtime = await self.inverter.read_runtime_data()
+            if not isinstance(runtime, dict):
+                raise RuntimeError("read_runtime_data lieferte kein Dictionary")
 
             # Settings ändern sich selten → nur alle N Polls lesen (inkl. erstem)
             if self._poll_index % max(1, config.SETTINGS_INTERVAL) == 0:
@@ -108,6 +110,9 @@ class Poller:
                 device = await self.inverter.read_device_info()
             except Exception as exc:
                 log.warning("Geräte-Info konnte nicht gelesen werden: %s", exc)
+            # ET: read_device_info() liefert None und setzt stattdessen Attribute
+            if not isinstance(device, dict):
+                device = self._device_info_from_attributes()
 
             sensors = ()
             try:
@@ -157,9 +162,35 @@ class Poller:
             # Nicht kritisch: Settings werden nicht von allen Modellen unterstützt
             log.warning("Settings konnten nicht gelesen werden: %s", exc)
             return None
+        if not isinstance(raw, dict):
+            log.warning("read_settings_data lieferte kein Dictionary")
+            return None
         settings = {k: v for k, v in raw.items() if v is not None}
         unsupported = sorted(k for k, v in raw.items() if v is None)
         return settings, unsupported
+
+    # Attribute, die goodwe (ET/ES) bei read_device_info() am Inverter-Objekt
+    # setzt, obwohl die Methode selbst None zurückliefert.
+    _DEVICE_ATTRS = (
+        "serial_number",
+        "model_name",
+        "firmware",
+        "arm_firmware",
+        "dsp1_version",
+        "dsp2_version",
+        "arm_version",
+        "rated_power",
+        "modbus_version",
+        "ac_output_type",
+    )
+
+    def _device_info_from_attributes(self) -> dict:
+        """Geräte-Info aus den Inverter-Attributen zusammenbauen."""
+        return {
+            attr: value
+            for attr in self._DEVICE_ATTRS
+            if (value := getattr(self.inverter, attr, None)) is not None
+        }
 
     async def run(self) -> None:
         """Endlosschleife: sofortige erste Abfrage, danach alle POLL_INTERVAL Sekunden."""

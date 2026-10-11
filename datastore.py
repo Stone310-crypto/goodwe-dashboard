@@ -72,9 +72,9 @@ class DataStore:
         unsupported_settings: Optional[list] = None,
     ) -> None:
         with self._lock:
-            self._runtime = {k: _jsonable(v) for k, v in runtime.items()}
-            self._settings = {k: _jsonable(v) for k, v in settings.items()}
-            self._device = {k: _jsonable(v) for k, v in device.items()}
+            self._runtime = {k: _jsonable(v) for k, v in (runtime or {}).items()}
+            self._settings = {k: _jsonable(v) for k, v in (settings or {}).items()}
+            self._device = {k: _jsonable(v) for k, v in (device or {}).items()}
             self._fields = [{**f, "value": _jsonable(f.get("value"))} for f in fields]
             self._unsupported_settings = list(unsupported_settings or [])
             self._status["online"] = True
