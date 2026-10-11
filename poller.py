@@ -67,6 +67,8 @@ class Poller:
         self.store = store
         self.inverter = None
         self._poll_index = 0
+        self._settings_cache: dict = {}
+        self._unsupported_cache: list = []
         self._reported_unsupported: set = set()
 
     async def _connect(self):
@@ -80,7 +82,6 @@ class Poller:
 
     async def poll_once(self) -> None:
         self.store.begin_poll()
-        self._poll_index += 1
         started = time.monotonic()
         try:
             if self.inverter is None:
@@ -94,11 +95,13 @@ class Poller:
             # Runtime-Werte sind Pflicht – ohne sie gilt der Poll als fehlgeschlagen
             runtime = await self.inverter.read_runtime_data()
 
-            # Settings ändern sich selten → nur alle N Polls lesen
-            settings: dict = {}
-            unsupported: list = []
+            # Settings ändern sich selten → nur alle N Polls lesen (inkl. erstem)
             if self._poll_index % max(1, config.SETTINGS_INTERVAL) == 0:
-                settings, unsupported = await self._read_settings()
+                result = await self._read_settings()
+                if result is not None:
+                    self._settings_cache, self._unsupported_cache = result
+            self._poll_index += 1
+            unsupported = self._unsupported_cache
 
             device: dict = {}
             try:
@@ -125,7 +128,7 @@ class Poller:
 
             self.store.update(
                 runtime=runtime,
-                settings=settings,
+                settings=self._settings_cache,
                 device=device,
                 fields=fields,
                 unsupported_settings=sorted(unsupported),
@@ -133,7 +136,7 @@ class Poller:
             log.info(
                 "Poll OK: %d Runtime-Werte, %d Settings, %d Felder (%.1f s)",
                 len(runtime),
-                len(settings),
+                len(self._settings_cache),
                 len(fields),
                 time.monotonic() - started,
             )
@@ -143,14 +146,17 @@ class Poller:
             self.inverter = None
             self.store.set_error(str(exc))
 
-    async def _read_settings(self) -> tuple[dict, list]:
-        """Liest die Settings; nicht unterstützte Einträge werden aussortiert."""
+    async def _read_settings(self) -> tuple[dict, list] | None:
+        """Liest die Settings; nicht unterstützte Einträge werden aussortiert.
+
+        Liefert None bei einem Lesefehler – der vorherige Cache bleibt dann erhalten.
+        """
         try:
             raw = await self.inverter.read_settings_data()
         except Exception as exc:
             # Nicht kritisch: Settings werden nicht von allen Modellen unterstützt
             log.warning("Settings konnten nicht gelesen werden: %s", exc)
-            return {}, []
+            return None
         settings = {k: v for k, v in raw.items() if v is not None}
         unsupported = sorted(k for k, v in raw.items() if v is None)
         return settings, unsupported
