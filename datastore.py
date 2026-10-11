@@ -3,12 +3,37 @@
 import threading
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from enum import Enum
 from typing import Any, Deque, Dict, Optional
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _jsonable(value: Any) -> Any:
+    """Wandelt beliebige Wechselrichter-Werte in JSON-kompatible Typen um.
+
+    Die goodwe-Bibliothek liefert z. B. datetime-Objekte (Timestamp-Sensoren),
+    Enums oder bytes – Flask/jsonify wirft darauf sonst einen 500er.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, (bytes, bytearray)):
+        return value.hex()
+    if isinstance(value, Enum):
+        return value.name
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_jsonable(v) for v in value]
+    return str(value)
 
 
 class DataStore:
@@ -47,10 +72,10 @@ class DataStore:
         unsupported_settings: Optional[list] = None,
     ) -> None:
         with self._lock:
-            self._runtime = runtime
-            self._settings = settings
-            self._device = device
-            self._fields = fields
+            self._runtime = {k: _jsonable(v) for k, v in runtime.items()}
+            self._settings = {k: _jsonable(v) for k, v in settings.items()}
+            self._device = {k: _jsonable(v) for k, v in device.items()}
+            self._fields = [{**f, "value": _jsonable(f.get("value"))} for f in fields]
             self._unsupported_settings = list(unsupported_settings or [])
             self._status["online"] = True
             self._status["last_error"] = None

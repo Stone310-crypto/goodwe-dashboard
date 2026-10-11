@@ -15,7 +15,7 @@ def _str(name: str, default: str) -> str:
 
 
 # Wechselrichter
-INVERTER_IP = _str("GOODWE_IP", "192.168.1.108")
+INVERTER_IP = _str("GOODWE_IP", "192.168.1.105")
 INVERTER_PORT = _int("GOODWE_PORT", 8899)
 INVERTER_FAMILY = _str("GOODWE_FAMILY", "") or None
 INVERTER_TIMEOUT = _int("GOODWE_TIMEOUT", 5)
