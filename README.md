@@ -110,6 +110,30 @@ die Bibliothek merkt sich abgelehnte Settings und fragt sie nicht erneut an.
 Sie werden einmal pro Lauf im Log gemeldet und in der WebUI unter
 „Wechselrichter-Settings“ als „abgelehnt“ angezeigt.
 
+## Deploy auf den Produktions-Host
+
+[deploy.sh](deploy.sh) kopiert die Projektdateien per rsync/SSH auf den
+Remote-Host, installiert die Abhängigkeiten und richtet den Dienst als
+systemd-Service ein (inkl. Stopp alter manueller Instanzen und Verifikation
+aller Endpunkte):
+
+```bash
+./deploy.sh                 # Standard: root@100.103.72.61:/home/leon/goodwe-dashboard
+./deploy.sh <host> <user> <remote-dir>   # abweichendes Ziel
+```
+
+Das Skript ist idempotent (mehrfach ausführbar) und erhält die auf dem
+Remote konfigurierte Wechselrichter-IP (`GOODWE_IP`) beim Kopieren der
+`config.py`. Ausgeschlossen werden `.venv`, `__pycache__` und `*.db` —
+die persistierte Historie auf dem Remote bleibt erhalten.
+
+Danach auf dem Remote:
+
+```bash
+systemctl status goodwe          # Status
+journalctl -u goodwe -f          # Logs verfolgen
+```
+
 ## Als systemd-Service (optional)
 
 `/etc/systemd/system/goodwe.service`:

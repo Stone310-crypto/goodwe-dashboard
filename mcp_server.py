@@ -84,6 +84,9 @@ def create_http_app(store: DataStore):
         streamable_http_path="/mcp",
         json_response=True,      # JSON statt SSE – einfacher für die WebGUI
         stateless_http=True,     # keine Session-Verwaltung nötig
+        # host != localhost: kein DNS-Rebinding-Schutz mit localhost-Whitelist
+        # (sonst lehnt der Server Aufrufe über LAN/Tailscale mit 421 ab).
+        host="0.0.0.0",
     )
     return CORSMiddleware(
         app,
