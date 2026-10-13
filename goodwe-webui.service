@@ -1,0 +1,14 @@
+[Unit]
+Description=GoodWe Monitor WebUI (Flask)
+After=network-online.target goodwe-mcp.service
+Wants=network-online.target goodwe-mcp.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/leon/goodwe-dashboard
+ExecStart=/home/leon/goodwe-dashboard/.venv/bin/python webui_main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

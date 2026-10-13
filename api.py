@@ -15,14 +15,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from datastore import DataStore
+from energy import EnergyCalculator
 
 
 def create_app(store: DataStore) -> FastAPI:
     app = FastAPI(
         title="GoodWe Service API",
-        description="Daten des GoodWe-Wechselrichters, gesammelt im 60s-Polling-Loop.",
+        description="Daten des GoodWe-Wechselrichters, gesammelt im 10s-Polling-Loop.",
         version="1.0.0",
     )
+    calculator = EnergyCalculator(store)
 
     # Andere Server sollen die Daten abfragen dürfen
     app.add_middleware(
@@ -68,5 +70,21 @@ def create_app(store: DataStore) -> FastAPI:
         max_points: int | None = Query(default=None, description="Maximale Anzahl Messpunkte"),
     ):
         return store.history_series(fields=fields, minutes=minutes, max_points=max_points)
+
+    @app.get("/api/autarky")
+    async def get_autarky(period: str = Query(default="today")):
+        """Autarkiegrad: wie viel Prozent des Verbrauchs ohne Netzbezug gedeckt wurden."""
+        try:
+            return calculator.compute_autarky(period)
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+    @app.get("/api/energy_balance")
+    async def get_energy_balance(period: str = Query(default="today")):
+        """Vollständige Energie-Bilanz für today/week/month/year."""
+        try:
+            return calculator.compute_balance(period)
+        except ValueError as exc:
+            return {"error": str(exc)}
 
     return app

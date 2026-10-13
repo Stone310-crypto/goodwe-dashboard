@@ -1,7 +1,8 @@
-"""Abfrage-Loop: pollt den Wechselrichter alle POLL_INTERVAL Sekunden.
+"""Abfrage-Loop: pollt den Wechselrichter alle POLL_INTERVAL Sekunden
+(Standard: 10 s).
 
-Bewusst ein langsamer Loop (Standard: 60 s), um nicht in Rate-Limits
-des Wechselrichters zu laufen.
+Settings werden nur alle N Polls gelesen (GOODWE_SETTINGS_INTERVAL), da sie
+sich selten ändern – das hält die Last pro Abfrage klein.
 
 Die Verbindung zum Wechselrichter bleibt über die Polls hinweg offen:
 die goodwe-Bibliothek merkt sich dabei intern, welche Sensoren/Settings
@@ -13,11 +14,14 @@ beim nächsten Poll neu aufgebaut.
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 
 import goodwe
 
 import config
+import user_config
 from datastore import DataStore
+from metrics import compute_metrics
 
 log = logging.getLogger("poller")
 
@@ -70,6 +74,14 @@ class Poller:
         self._settings_cache: dict = {}
         self._unsupported_cache: list = []
         self._reported_unsupported: set = set()
+        self._warning: dict = {
+            "active": False,
+            "started_at": None,
+            "cleared_at": None,
+            "trigger_count": 0,
+            "current_w": None,
+            "threshold_w": 0.0,
+        }
 
     async def _connect(self):
         return await goodwe.connect(
@@ -122,6 +134,11 @@ class Poller:
 
             fields = build_fields(runtime, sensors)
 
+            # Benutzer-Einstellungen + Batterie-/Verbrauchskennzahlen
+            uc = user_config.load()
+            metrics = compute_metrics(runtime, uc)
+            warning = self._track_warning(runtime, uc)
+
             # Nicht unterstützte Settings nur einmal pro Lauf melden
             new_unsupported = [u for u in unsupported if u not in self._reported_unsupported]
             if new_unsupported:
@@ -137,6 +154,8 @@ class Poller:
                 device=device,
                 fields=fields,
                 unsupported_settings=sorted(unsupported),
+                metrics=metrics,
+                warning=warning,
             )
             log.info(
                 "Poll OK: %d Runtime-Werte, %d Settings, %d Felder (%.1f s)",
@@ -169,6 +188,34 @@ class Poller:
         unsupported = sorted(k for k, v in raw.items() if v is None)
         return settings, unsupported
 
+    def _track_warning(self, runtime: dict, uc: dict) -> dict:
+        """Überwacht den Hausverbrauch gegen die Warnschwelle aus config.toml."""
+        house = runtime.get("house_consumption")
+        threshold = uc["warning_threshold_w"]
+        w = self._warning
+        w["threshold_w"] = threshold
+        w["current_w"] = house if isinstance(house, (int, float)) else None
+
+        over = (
+            isinstance(house, (int, float))
+            and threshold > 0
+            and house > threshold
+        )
+        if over and not w["active"]:
+            w["active"] = True
+            w["started_at"] = datetime.now(timezone.utc).isoformat()
+            w["trigger_count"] = int(w.get("trigger_count") or 0) + 1
+            log.warning(
+                "Hoher Verbrauch: %.0f W überschreitet die Schwelle von %.0f W!",
+                house,
+                threshold,
+            )
+        elif not over and w["active"]:
+            w["active"] = False
+            w["cleared_at"] = datetime.now(timezone.utc).isoformat()
+            log.info("Verbrauch wieder unter der Schwelle (%.0f W)", threshold)
+        return w
+
     # Attribute, die goodwe (ET/ES) bei read_device_info() am Inverter-Objekt
     # setzt, obwohl die Methode selbst None zurückliefert.
     _DEVICE_ATTRS = (
@@ -193,13 +240,17 @@ class Poller:
         }
 
     async def run(self) -> None:
-        """Endlosschleife: sofortige erste Abfrage, danach alle POLL_INTERVAL Sekunden."""
+        """Endlosschleife: Abfrage im Intervall aus config.toml (dynamisch)."""
         while True:
             loop = asyncio.get_running_loop()
+            interval = float(
+                user_config.load().get("poll_interval_seconds", config.POLL_INTERVAL)
+            )
+            self.store.set_poll_interval(interval)
             started = loop.time()
             await self.poll_once()
             elapsed = loop.time() - started
-            await asyncio.sleep(max(1, config.POLL_INTERVAL - elapsed))
+            await asyncio.sleep(max(1, interval - elapsed))
 
 
 def run(store: DataStore) -> None:

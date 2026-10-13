@@ -104,6 +104,20 @@ details[open] > summary { margin-bottom: 10px; }
   display: none; background: #3a1d1d; border: 1px solid var(--red); color: #ffb4ac;
   border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
 }
+.warn-box {
+  display: none; background: #3a2e0d; border: 1px solid var(--amber); color: #ffe6a8;
+  border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 600; margin-bottom: 14px;
+}
+.toolbar label.field-label {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+}
+.toolbar input[type=number] {
+  width: 110px; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none;
+}
+.toolbar input[type=number]:focus { border-color: var(--accent); }
+.cfg-status { color: var(--muted); font-size: 13px; }
+.cfg-status.ok { color: var(--green); }
 @media (max-width: 640px) { .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
 </style>
 </head>
@@ -118,6 +132,12 @@ details[open] > summary { margin-bottom: 10px; }
 </header>
 
 <div class="error-box" id="error-box"></div>
+<div class="warn-box" id="warn-box"></div>
+
+<section>
+  <h2>Batterie &amp; Verbrauch</h2>
+  <div class="cards" id="metric-cards"></div>
+</section>
 
 <section id="sec-cards">
   <h2>Messwerte <span class="info" id="cards-meta"></span></h2>
@@ -148,6 +168,45 @@ details[open] > summary { margin-bottom: 10px; }
   </div>
   <div class="chart-wrap" id="chart"></div>
   <div class="chart-meta" id="chart-meta"></div>
+</section>
+
+<section>
+  <h2>PV-Produktion · Ø je Stunde</h2>
+  <div class="chart-wrap" id="pv-chart"></div>
+  <div class="chart-meta" id="pv-meta"></div>
+</section>
+
+<section>
+  <h2>Energie-Bilanz</h2>
+  <div class="chart-row">
+    <select id="energy-period">
+      <option value="today">Heute</option>
+      <option value="week">Diese Woche</option>
+      <option value="month">Dieser Monat</option>
+      <option value="year">Dieses Jahr</option>
+    </select>
+    <button id="btn-refresh-energy">Aktualisieren</button>
+    <span class="chart-meta" id="energy-meta"></span>
+  </div>
+  <div class="cards" id="energy-cards"></div>
+</section>
+
+<section>
+  <h2>Einstellungen</h2>
+  <div class="toolbar">
+    <label class="field-label">Batteriekapazität
+      <input type="number" id="cfg-capacity" step="0.1" min="0.1"> kWh
+    </label>
+    <label class="field-label">Warnschwelle Verbrauch
+      <input type="number" id="cfg-threshold" step="10" min="0"> W
+    </label>
+    <label class="field-label">Abfrage-Intervall
+      <input type="number" id="cfg-interval" step="1" min="2" max="600"> s
+    </label>
+    <button id="btn-save-config" class="primary">Speichern</button>
+    <span class="cfg-status" id="cfg-status"></span>
+  </div>
+  <div class="info">Werte werden in <code>config.toml</code> gespeichert und bei jeder Abfrage frisch eingelesen – Änderungen wirken sofort, ohne Neustart. Das Intervall gilt für den Poller des Kern-Services.</div>
 </section>
 
 <section>
@@ -199,6 +258,84 @@ function fmt(value, numeric) {
   return String(value);
 }
 
+function fmtDuration(sec) {
+  if (sec === null || sec === undefined || !isFinite(sec)) return "–";
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  if (h === 0) return m + " min";
+  return h + " h " + m + " min";
+}
+
+function mkCard(name, val, unit, cid) {
+  return '<div class="card"><div class="cname">' + name + '</div>' +
+    '<div class="cval">' + val + (unit ? '<span class="cunit">' + unit + '</span>' : '') + '</div>' +
+    (cid ? '<div class="cid">' + cid + '</div>' : '') + '</div>';
+}
+
+/* ---------- Batterie & Verbrauch ---------- */
+
+function renderMetrics() {
+  const m = state.metrics || {};
+  const wrap = $("metric-cards");
+  if (Object.keys(m).length === 0) {
+    wrap.innerHTML = '<div class="empty">Noch keine Kennzahlen vorhanden – warte auf den nächsten Poll.</div>';
+    return;
+  }
+  const cap = m.battery_capacity_kwh;
+  const html = [];
+  if (m.battery_soc_percent !== undefined) {
+    html.push(mkCard("Batteriestand", fmt(m.battery_soc_percent, true), "%", "battery_soc"));
+  }
+  if (m.battery_stored_kwh !== undefined) {
+    html.push(mkCard("Geladen", fmt(m.battery_stored_kwh, true) + " von " + fmt(cap, true), "kWh", "Kapazität"));
+  }
+  if (m.battery_charge_power_w !== undefined) {
+    html.push(mkCard("Ladeleistung", "+" + fmt(m.battery_charge_power_w, true), "W", "pbattery1"));
+    html.push(mkCard("Voll in", fmtDuration(m.charge_time_seconds), "", "Ladezeit"));
+  } else if (m.battery_discharge_power_w !== undefined) {
+    html.push(mkCard("Entladeleistung", fmt(m.battery_discharge_power_w, true), "W", "pbattery1"));
+    html.push(mkCard("Leer in", fmtDuration(m.discharge_time_seconds), "", "Entladezeit"));
+  } else if (m.battery_power_w !== undefined) {
+    html.push(mkCard("Batterie-Leistung", fmt(0, true), "W", "pbattery1"));
+  }
+  if (m.house_power_w !== undefined) {
+    html.push(mkCard("Hausverbrauch", fmt(m.house_power_w, true), "W", "house_consumption"));
+  }
+  if (m.grid_import_w !== undefined) {
+    html.push(mkCard("Netzbezug", fmt(m.grid_import_w, true), "W", m.grid_state || "grid"));
+  }
+  if (m.grid_export_w !== undefined && m.grid_export_w > 0) {
+    html.push(mkCard("Einspeisung", fmt(m.grid_export_w, true), "W", m.grid_state || "grid"));
+  }
+  if (m.net_consumption_w !== undefined) {
+    html.push(mkCard("Netto-Verbrauch", fmt(m.net_consumption_w, true), "W", "Haus − PV"));
+  }
+  if (m.autonomy_time_seconds !== undefined) {
+    const val = m.autonomy_covered ? "∞ (PV deckt)" : fmtDuration(m.autonomy_time_seconds);
+    html.push(mkCard("Strom reicht noch", val, "", "Autonomie"));
+  }
+  if (m.warning_threshold_w !== undefined) {
+    html.push(mkCard("Warnschwelle", fmt(m.warning_threshold_w, true), "W", "config.toml"));
+  }
+  wrap.innerHTML = html.join("");
+}
+
+function renderWarning() {
+  const w = state.warning || {};
+  const box = $("warn-box");
+  if (w.active) {
+    box.style.display = "block";
+    let text = "⚡ Hoher Verbrauch: " + fmt(w.current_w, true) +
+      " W überschreitet die Schwelle von " + fmt(w.threshold_w, true) + " W!";
+    if (w.started_at) {
+      text += " (seit " + new Date(w.started_at).toLocaleTimeString("de-DE") + ")";
+    }
+    box.textContent = text;
+  } else {
+    box.style.display = "none";
+  }
+}
+
 /* ---------- Header / Status ---------- */
 
 function renderStatus() {
@@ -219,7 +356,7 @@ function renderStatus() {
     ? Math.max(0, (Date.now() - Date.parse(state.last_update)) / 1000)
     : null;
   const next = state.last_update
-    ? Math.max(0, Math.round((s.poll_interval || 60) - age))
+    ? Math.max(0, Math.round((s.poll_interval || 10) - age))
     : "–";
   const last = state.last_update
     ? new Date(state.last_update).toLocaleTimeString("de-DE")
@@ -395,7 +532,7 @@ async function renderChart() {
     .map(p => ({ t: p.ts, v: p.values[fieldId] }))
     .filter(p => typeof p.v === "number" && isFinite(p.v));
   if (pts.length === 0) {
-    wrap.innerHTML = '<div class="empty">Noch keine Daten in der Historie (Polling läuft alle 60 s).</div>';
+    wrap.innerHTML = '<div class="empty">Noch keine Daten in der Historie (Polling läuft alle 10 s).</div>';
     meta.textContent = "";
     return;
   }
@@ -467,6 +604,9 @@ async function mcpCall(tool, args) {
     throw new Error("MCP-Fehler: " + (data.error.message || JSON.stringify(data.error)));
   }
   const result = data.result || {};
+  if (result.isError) {
+    throw new Error((result.content || []).map(c => c.text || "").join(" ") || "Tool-Fehler");
+  }
   if (result.structuredContent !== undefined && result.structuredContent !== null) {
     return result.structuredContent;
   }
@@ -475,6 +615,99 @@ async function mcpCall(tool, args) {
     try { return JSON.parse(text); } catch (e) { return text; }
   }
   return result;
+}
+
+/* ---------- PV-Produktion (Ø je Stunde) ---------- */
+
+async function renderPvStats() {
+  const wrap = $("pv-chart");
+  const meta = $("pv-meta");
+  let data;
+  try {
+    data = await mcpCall("get_pv_stats");
+  } catch (e) {
+    meta.textContent = "Fehler beim Laden der PV-Statistik: " + e.message;
+    return;
+  }
+  const hours = data.hours || [];
+  if (hours.length === 0) {
+    wrap.innerHTML = '<div class="empty">Noch keine PV-Statistik – wird mit jedem Poll aufgebaut.</div>';
+    meta.textContent = "";
+    return;
+  }
+  const W = 1100, H = 220, padL = 58, padR = 14, padT = 12, padB = 26;
+  const maxAvg = Math.max(...hours.map(h => h.avg_w), 1);
+  const bw = (W - padL - padR) / 24;
+  const y = (v) => padT + (maxAvg - v) / maxAvg * (H - padT - padB);
+
+  let bars = "";
+  for (const h of hours) {
+    const bh = Math.max(0, (H - padT - padB) * (h.avg_w / maxAvg));
+    const best = data.best_hour && h.hour === data.best_hour.hour;
+    bars +=
+      '<rect x="' + (padL + h.hour * bw + bw * 0.15).toFixed(1) +
+      '" y="' + (padT + (H - padT - padB) - bh).toFixed(1) +
+      '" width="' + (bw * 0.7).toFixed(1) + '" height="' + Math.max(bh, 0.5).toFixed(1) +
+      '" fill="' + (best ? "#2ecc71" : "#3da9fc") + '" opacity="0.85">' +
+      '<title>' + h.hour + ' Uhr: Ø ' + fmt(h.avg_w, true) + ' W (' + h.samples + ' Messungen)</title></rect>';
+  }
+  const labels = [0, 6, 12, 18, 23].map(hh =>
+    '<text x="' + (padL + hh * bw + bw / 2).toFixed(1) + '" y="' + (H - 6) +
+    '" fill="#8b98a5" font-size="11" text-anchor="middle">' + hh + ' Uhr</text>'
+  ).join("");
+  const grid = [0.25, 0.5, 0.75, 1].map(f =>
+    '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(maxAvg * f).toFixed(1) +
+    '" y2="' + y(maxAvg * f).toFixed(1) + '" stroke="#2a3542" stroke-dasharray="4 4"/>' +
+    '<text x="' + (padL - 8) + '" y="' + (y(maxAvg * f) + 4).toFixed(1) +
+    '" fill="#8b98a5" font-size="11" text-anchor="end">' + (maxAvg * f).toLocaleString("de-DE", { maximumFractionDigits: 0 }) + '</text>'
+  ).join("");
+
+  wrap.innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="min-width:640px">' +
+    '<rect x="' + padL + '" y="' + padT + '" width="' + (W - padL - padR) + '" height="' + (H - padT - padB) + '" fill="#0f141a"/>' +
+    grid + bars + labels + '</svg>';
+
+  if (data.best_hour) {
+    meta.textContent = "Beste Zeit: " + data.best_hour.hour + " Uhr mit Ø " +
+      fmt(data.best_hour.avg_w, true) + " W (" + data.best_hour.samples + " Messungen) – " +
+      "Ø über alle erfassten Tage.";
+  } else {
+    meta.textContent = "";
+  }
+}
+
+/* ---------- Energie-Bilanz ---------- */
+
+async function renderEnergy() {
+  const period = $("energy-period").value;
+  const wrap = $("energy-cards");
+  const meta = $("energy-meta");
+  let b;
+  try {
+    b = await mcpCall("get_energy_balance", { period: period });
+  } catch (e) {
+    meta.textContent = "Fehler beim Laden der Bilanz: " + e.message;
+    return;
+  }
+  if (b.error) { meta.textContent = "Fehler: " + b.error; return; }
+  const cards = [];
+  cards.push(mkCard("PV-Produktion", fmt(b.pv.production_kwh, true), "kWh", "e_day"));
+  cards.push(mkCard("Verbrauch", fmt(b.consumption.total_kwh, true), "kWh", "e_load_day"));
+  cards.push(mkCard("Netzbezug", fmt(b.grid.imported_kwh, true), "kWh", "Import"));
+  cards.push(mkCard("Einspeisung", fmt(b.grid.exported_kwh, true), "kWh", "Export"));
+  cards.push(mkCard("Direktverbrauch PV", fmt(b.pv.direct_use_kwh, true), "kWh", "PV → Haus"));
+  cards.push(mkCard("Batterie geladen", fmt(b.battery.charged_kwh, true), "kWh", ""));
+  cards.push(mkCard("Batterie entladen", fmt(b.battery.discharged_kwh, true), "kWh", ""));
+  cards.push(mkCard("Autarkie", fmt(b.autarky_percent, true), "%", ""));
+  cards.push(mkCard("Eigenverbrauch", fmt(b.self_consumption_percent, true), "%", ""));
+  cards.push(mkCard("Netzabhängigkeit", fmt(b.grid_dependency_percent, true), "%", ""));
+  wrap.innerHTML = cards.join("");
+  const from = new Date(b.from).toLocaleString("de-DE");
+  const to = new Date(b.to).toLocaleString("de-DE");
+  meta.textContent = from + " – " + to +
+    " · Vollständigkeit: " + fmt(b.data_completeness * 100, true) + " %" +
+    (b.estimate ? " · Schätzung" : "") +
+    (b.source === "power_integration" ? " · Quelle: Leistungs-Integration" : " · Quelle: Wechselrichter-Zähler");
 }
 
 /* ---------- Laden / Refresh ---------- */
@@ -494,6 +727,8 @@ async function refresh() {
       renderChartSelect();
     }
     renderStatus();
+    renderMetrics();
+    renderWarning();
     renderCards();
     renderSettings();
     renderChartSelect(); // Feldliste kann sich erweitern
@@ -502,6 +737,50 @@ async function refresh() {
     $("error-box").textContent = "⚠️ Verbindung zum MCP-Server fehlgeschlagen: " + e.message;
   }
 }
+
+/* ---------- Einstellungen (config.toml) ---------- */
+
+async function loadConfigForm() {
+  try {
+    const cfg = await mcpCall("get_config");
+    $("cfg-capacity").value = cfg.battery_capacity_kwh;
+    $("cfg-threshold").value = cfg.warning_threshold_w;
+    $("cfg-interval").value = cfg.poll_interval_seconds;
+    $("cfg-status").textContent = "";
+    $("cfg-status").className = "cfg-status";
+  } catch (e) {
+    $("cfg-status").textContent = "Fehler beim Laden: " + e.message;
+  }
+}
+
+$("btn-save-config").addEventListener("click", async () => {
+  const cap = parseFloat($("cfg-capacity").value);
+  const thr = parseFloat($("cfg-threshold").value);
+  const itv = parseFloat($("cfg-interval").value);
+  const status = $("cfg-status");
+  status.className = "cfg-status";
+  if (!isFinite(cap) || cap <= 0) { status.textContent = "Ungültige Batteriekapazität (muss > 0 sein)."; return; }
+  if (!isFinite(thr) || thr < 0) { status.textContent = "Ungültige Warnschwelle (>= 0)."; return; }
+  if (!isFinite(itv) || itv < 2 || itv > 600) { status.textContent = "Ungültiges Intervall (2–600 s)."; return; }
+  status.textContent = "Speichern …";
+  try {
+    const result = await mcpCall("update_config", {
+      battery_capacity_kwh: cap,
+      warning_threshold_w: thr,
+      poll_interval_seconds: itv,
+    });
+    if (result.ok) {
+      status.className = "cfg-status ok";
+      status.textContent = "Gespeichert ✓ – übernommen ab dem nächsten Poll.";
+    } else {
+      status.className = "cfg-status";
+      status.textContent = "Fehler: " + (result.error || "unbekannt");
+    }
+  } catch (e) {
+    status.className = "cfg-status";
+    status.textContent = "Fehler: " + e.message;
+  }
+});
 
 $("btn-all").addEventListener("click", () => {
   for (const f of state.fields || []) selection.add(f.id);
@@ -529,7 +808,14 @@ $("search").addEventListener("input", (e) => {
 loadSelection();
 refresh();
 renderChart();
-setInterval(refresh, 10000); // UI alle 10 s aktualisieren (Polling bleibt bei 60 s)
+loadConfigForm();
+renderPvStats();
+renderEnergy();
+setInterval(refresh, 10000); // UI alle 10 s aktualisieren (Polling läuft ebenfalls alle 10 s)
+setInterval(renderPvStats, 60000); // PV-Profil jede Minute neu
+setInterval(renderEnergy, 60000); // Energie-Bilanz jede Minute neu
+$("energy-period").addEventListener("change", renderEnergy);
+$("btn-refresh-energy").addEventListener("click", renderEnergy);
 </script>
 </body>
 </html>

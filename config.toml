@@ -1,0 +1,13 @@
+# GoodWe Monitor – benutzerspezifische Einstellungen
+# Bearbeitbar über die WebUI (Abschnitt "Einstellungen").
+# Änderungen wirken ohne Neustart – alle Dienste lesen diese Datei
+# bei jeder Abfrage frisch ein.
+
+# Batteriekapazität des Speichers in kWh
+battery_capacity_kwh = 10.0
+
+# Warnung, wenn der Hausverbrauch diese Leistung (W) überschreitet
+warning_threshold_w = 2000
+
+# Abfrage-Intervall des Pollers in Sekunden (min 2, max 600)
+poll_interval_seconds = 10

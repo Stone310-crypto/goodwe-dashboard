@@ -8,10 +8,9 @@ MCP-Port aus der Konfiguration).
 from flask import Flask, render_template, request
 
 import config
-from datastore import DataStore
 
 
-def create_app(store: DataStore) -> Flask:
+def create_app() -> Flask:
     app = Flask(__name__)
 
     @app.get("/")
@@ -25,5 +24,5 @@ def create_app(store: DataStore) -> Flask:
     return app
 
 
-def run(store: DataStore, host: str, port: int) -> None:
-    create_app(store).run(host=host, port=port, threaded=True, use_reloader=False)
+def run(host: str, port: int) -> None:
+    create_app().run(host=host, port=port, threaded=True, use_reloader=False)

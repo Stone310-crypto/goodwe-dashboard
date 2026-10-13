@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Deploy-Script: kopiert den GoodWe-Service auf den Remote-Host und
-# installiert ihn dort als systemd-Service (goodwe.service).
+# installiert ihn dort als drei systemd-Services:
+#   goodwe.service        – Kern: Poller + FastAPI-API
+#   goodwe-mcp.service    – MCP-Server (liest Daten aus der SQLite-DB)
+#   goodwe-webui.service  – WebUI (Flask, ruft Daten über MCP ab)
 #
 # Aufruf:  ./deploy.sh [host] [user] [remote-dir]
 # Standard: host=100.103.72.61  user=root  remote-dir=/home/leon/goodwe-dashboard
@@ -9,7 +12,7 @@ set -euo pipefail
 REMOTE_HOST="${1:-100.103.72.61}"
 REMOTE_USER="${2:-root}"
 REMOTE_DIR="${3:-/home/leon/goodwe-dashboard}"
-SERVICE_NAME="goodwe"
+SERVICES="goodwe goodwe-mcp goodwe-webui"
 
 SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 RSYNC="rsync -az"
@@ -20,7 +23,7 @@ SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "==> Deploy nach ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}"
 
 # ---------------------------------------------------------------- 1. Kopieren
-echo "==> Kopiere Projektdateien (ohne venv, __pycache__, *.db) …"
+echo "==> Kopiere Projektdateien (ohne venv, __pycache__, *.db*) …"
 
 # IP aus der Remote-config vor dem Überschreiben sichern, damit die
 # lokal geänderte config.py die funktionierende Wechselrichter-IP nicht kaputtmacht.
@@ -29,8 +32,20 @@ REMOTE_IP="$(${SSH} "${REMOTE_USER}@${REMOTE_HOST}" \
 
 $RSYNC \
   --exclude '.venv/' --exclude 'venv/' --exclude '__pycache__/' \
-  --exclude '*.pyc' --exclude '*.db' --exclude '.git/' --exclude '*.log' \
+  --exclude '*.pyc' --exclude '*.db' --exclude '*.db-wal' --exclude '*.db-shm' \
+  --exclude 'config.toml' --exclude '.git/' --exclude '*.log' \
   "$SRC_DIR/" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/"
+
+# config.toml (WebUI-Einstellungen) wird bewusst NICHT überschrieben –
+# nur anlegen, wenn es auf dem Remote noch nicht existiert.
+if ! ${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "[ -f '${REMOTE_DIR}/config.toml' ]"; then
+  echo "==> Lege config.toml mit Standardwerten an"
+  scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+    "$SRC_DIR/config.toml" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/config.toml"
+else
+  # Neue Schlüssel aus neueren Versionen ergänzen, ohne vorhandene Werte zu ändern
+  ${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "grep -q '^poll_interval_seconds' '${REMOTE_DIR}/config.toml' || echo 'poll_interval_seconds = 10' >> '${REMOTE_DIR}/config.toml'"
+fi
 
 # Remote-IP (falls gefunden) in die neue config.py zurückschreiben
 if [ -n "${REMOTE_IP}" ]; then
@@ -48,36 +63,42 @@ ${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "
   '${REMOTE_DIR}/.venv/bin/pip' install -q -r '${REMOTE_DIR}/requirements.txt'
 "
 
-# ----------------------------------------------------- 3. systemd-Service einrichten
-echo "==> Installiere systemd-Service ${SERVICE_NAME}.service …"
-${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "cp '${REMOTE_DIR}/goodwe.service' '/etc/systemd/system/${SERVICE_NAME}.service'"
-${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "systemctl daemon-reload && systemctl enable '${SERVICE_NAME}'"
+# ----------------------------------------------------- 3. systemd-Services einrichten
+echo "==> Installiere systemd-Services (${SERVICES}) …"
+for svc in ${SERVICES}; do
+  ${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "cp '${REMOTE_DIR}/${svc}.service' '/etc/systemd/system/${svc}.service'"
+done
+${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "systemctl daemon-reload && systemctl enable ${SERVICES}"
 
 # ----------------------------------------------- 4. Alte manuelle Instanz stoppen
 echo "==> Stoppe alte manuelle Instanz (falls vorhanden) …"
 ${SSH} "${REMOTE_USER}@${REMOTE_HOST}" 'bash -s' <<REMOTE
 # Nur stoppen, wenn der Port von einem Prozess gehalten wird, der NICHT
-# der systemd-Service selbst ist.
-MAIN_PID="\$(systemctl show -p MainPID --value '${SERVICE_NAME}' 2>/dev/null || echo 0)"
-PORT_PID="\$(ss -ltnp 2>/dev/null | grep ':8080' | grep -oP 'pid=\K[0-9]+' | head -1 || echo 0)"
-if [ -n "\${PORT_PID}" ] && [ "\${PORT_PID}" != "0" ] && [ "\${PORT_PID}" != "\${MAIN_PID}" ]; then
-  echo "Stoppe alte Instanz (PID \${PORT_PID})"
-  kill "\${PORT_PID}" 2>/dev/null || true
-  sleep 2
-fi
+# zu einem der systemd-Services gehört.
+MAIN_PIDS="\$(for s in ${SERVICES}; do systemctl show -p MainPID --value "\$s" 2>/dev/null || true; done)"
+for port in 8080 8000 8001; do
+  PORT_PID="\$(ss -ltnp 2>/dev/null | grep ":\${port}" | grep -oP 'pid=\K[0-9]+' | head -1 || echo 0)"
+  if [ -n "\${PORT_PID}" ] && [ "\${PORT_PID}" != "0" ] && ! echo "\${MAIN_PIDS}" | grep -qx "\${PORT_PID}"; then
+    echo "Stoppe alte Instanz auf Port \${port} (PID \${PORT_PID})"
+    kill "\${PORT_PID}" 2>/dev/null || true
+    sleep 1
+  fi
+done
+sleep 2
 REMOTE
 
-# ------------------------------------------------------------- 5. Service starten
-echo "==> Starte Service …"
-${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "systemctl restart '${SERVICE_NAME}'"
+# ------------------------------------------------------------- 5. Services starten
+echo "==> Starte Services (Reihenfolge: Kern -> MCP -> WebUI) …"
+${SSH} "${REMOTE_USER}@${REMOTE_HOST}" "systemctl restart ${SERVICES}"
 sleep 5
 
 # -------------------------------------------------------------------- 6. Prüfen
 echo "==> Verifikation …"
 ${SSH} "${REMOTE_USER}@${REMOTE_HOST}" 'bash -s' <<REMOTE
 echo '--- systemd ---'
-systemctl is-active '${SERVICE_NAME}'
-systemctl is-enabled '${SERVICE_NAME}'
+for s in ${SERVICES}; do
+  echo "\$s: \$(systemctl is-active \$s) / \$(systemctl is-enabled \$s)"
+done
 echo '--- Ports ---'
 ss -ltn | grep -E ':8080|:8000|:8001' || true
 echo '--- Endpunkte ---'
@@ -89,4 +110,4 @@ curl -s --max-time 5 -X POST -o /dev/null -w 'MCP:    HTTP %{http_code}\n' \
   http://127.0.0.1:8001/mcp || echo 'MCP:    FEHLER'
 REMOTE
 
-echo "==> Fertig. Logs: ssh ${REMOTE_USER}@${REMOTE_HOST} journalctl -u ${SERVICE_NAME} -f"
+echo "==> Fertig. Logs: ssh ${REMOTE_USER}@${REMOTE_HOST} journalctl -u goodwe -u goodwe-mcp -u goodwe-webui -f"

@@ -1,11 +1,11 @@
-"""GoodWe Monitor als Service.
+"""GoodWe Monitor – Kern-Service (systemd: goodwe.service).
 
-Startet vier Komponenten:
+Startet zwei Komponenten:
   1. Poller-Loop  – fragt den Wechselrichter jede Minute ab (gegen Rate-Limits)
-  2. WebUI (Flask) – Statusseite; ruft ihre Daten über MCP ab
-  3. API (FastAPI) – HTTP-API, damit andere Server die Daten abfragen können
-  4. MCP-Server    – zentrale Datenquelle (Model Context Protocol) für
-                     WebGUI und LLM-Clients; Historie persistent in SQLite
+  2. API (FastAPI) – HTTP-API, damit andere Server die Daten abfragen können
+
+Der Poller persistiert Snapshot und Historie in SQLite; daraus lesen die
+eigenständigen Services goodwe-mcp.service und goodwe-webui.service.
 
 Konfiguration über Umgebungsvariablen, siehe config.py.
 """
@@ -20,10 +20,8 @@ import config
 import poller
 from api import create_app as create_api_app
 from datastore import DataStore
-from mcp_server import create_http_app as create_mcp_app
-from webui import run as run_webui
 
-log = logging.getLogger("service")
+log = logging.getLogger("core")
 
 
 def main() -> None:
@@ -35,24 +33,16 @@ def main() -> None:
     # Interne Tracebacks der goodwe-Bibliothek ausblenden (z. B. bei
     # nicht unterstützten Settings) – der Poller protokolliert kompakt selbst.
     logging.getLogger("goodwe").setLevel(logging.CRITICAL)
-    # Flask/Zugriffslog und MCP-Session-Logs reduzieren
-    logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    logging.getLogger("mcp.server").setLevel(logging.WARNING)
 
     store = DataStore(
         history_size=config.HISTORY_SIZE,
         poll_interval=config.POLL_INTERVAL,
         db_path=config.DB_PATH or None,
+        energy_retention_days=config.ENERGY_RETENTION_DAYS,
     )
 
     threads = [
         threading.Thread(target=poller.run, args=(store,), daemon=True, name="poller"),
-        threading.Thread(
-            target=run_webui,
-            args=(store, config.UI_HOST, config.UI_PORT),
-            daemon=True,
-            name="webui",
-        ),
         threading.Thread(
             target=uvicorn.run,
             kwargs={
@@ -64,30 +54,15 @@ def main() -> None:
             daemon=True,
             name="api",
         ),
-        threading.Thread(
-            target=uvicorn.run,
-            kwargs={
-                "app": create_mcp_app(store),
-                "host": config.MCP_HOST,
-                "port": config.MCP_PORT,
-                "log_level": "warning",
-            },
-            daemon=True,
-            name="mcp",
-        ),
     ]
 
     log.info(
-        "GoodWe-Service startet: IP=%s, Poll-Intervall=%ss, "
-        "WebUI auf %s:%s, API auf %s:%s, MCP auf %s:%s (Endpoint: /mcp)",
+        "Kern-Service startet: IP=%s, Poll-Intervall=%ss, API auf %s:%s, DB: %s",
         config.INVERTER_IP,
         config.POLL_INTERVAL,
-        config.UI_HOST,
-        config.UI_PORT,
         config.API_HOST,
         config.API_PORT,
-        config.MCP_HOST,
-        config.MCP_PORT,
+        config.DB_PATH or "–",
     )
 
     for thread in threads:
@@ -97,7 +72,7 @@ def main() -> None:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
-        log.info("Beende GoodWe-Service …")
+        log.info("Beende Kern-Service …")
 
 
 if __name__ == "__main__":

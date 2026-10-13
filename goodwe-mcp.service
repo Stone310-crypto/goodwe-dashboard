@@ -1,0 +1,14 @@
+[Unit]
+Description=GoodWe Monitor MCP-Server (Datenquelle fuer WebUI und LLM-Clients)
+After=network-online.target goodwe.service
+Wants=network-online.target goodwe.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/leon/goodwe-dashboard
+ExecStart=/home/leon/goodwe-dashboard/.venv/bin/python mcp_main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

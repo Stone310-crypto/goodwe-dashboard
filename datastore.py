@@ -17,6 +17,17 @@ from typing import Any, Deque, Dict, Optional
 
 log = logging.getLogger("datastore")
 
+# Tageszähler des Wechselrichters (kWh) für die Energie-Bilanz.
+# Deltas werden pro Poll in die Tabelle energy_delta persistiert.
+ENERGY_COUNTER_FIELDS = {
+    "pv_wh": "e_day",
+    "import_wh": "e_day_imp",
+    "export_wh": "e_day_exp",
+    "load_wh": "e_load_day",
+    "bat_charge_wh": "e_bat_charge_day",
+    "bat_discharge_wh": "e_bat_discharge_day",
+}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -51,9 +62,11 @@ class DataStore:
         history_size: int = 1440,
         poll_interval: int = 60,
         db_path: Optional[str] = None,
+        energy_retention_days: int = 400,
     ) -> None:
         self._lock = threading.Lock()
         self._history_size = history_size
+        self._energy_retention_days = energy_retention_days
         self._status: Dict[str, Any] = {
             "online": False,
             "last_error": None,
@@ -69,7 +82,14 @@ class DataStore:
         self._settings: Dict[str, Any] = {}
         self._fields: list = []
         self._unsupported_settings: list = []
+        self._metrics: Dict[str, Any] = {}
+        self._warning: Dict[str, Any] = {}
+        self._pv_stats: Dict[int, Dict[str, float]] = {}  # Stunde -> {total, count}
         self._history: Deque[Dict[str, Any]] = deque(maxlen=history_size)
+        self._poll_interval = poll_interval
+        # Energie-Zähler-Deltas (Kern-Prozess)
+        self._prev_counters: Optional[dict] = None
+        self._last_counter_ts: Optional[float] = None
 
         # Persistente Historie (SQLite) – überlebt Neustarts des Dienstes
         self._db: Optional[sqlite3.Connection] = None
@@ -84,10 +104,26 @@ class DataStore:
 
     def _load_history_db(self, db_path: str) -> None:
         try:
-            self._db = sqlite3.connect(db_path, check_same_thread=False)
+            self._db = sqlite3.connect(db_path, check_same_thread=False, timeout=10)
+            self._db.execute("PRAGMA journal_mode=WAL")  # Lesen + Schreiben parallel
+            self._db.execute("PRAGMA busy_timeout=10000")
             self._db.execute(
                 'CREATE TABLE IF NOT EXISTS history '
                 '(ts REAL PRIMARY KEY, iso TEXT NOT NULL, "values" TEXT NOT NULL)'
+            )
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS snapshot "
+                "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS pv_stats "
+                "(hour INTEGER PRIMARY KEY, total REAL NOT NULL, count INTEGER NOT NULL)"
+            )
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS energy_delta ("
+                "ts REAL PRIMARY KEY, iso TEXT NOT NULL, dt REAL NOT NULL,"
+                "pv_wh REAL NOT NULL, import_wh REAL NOT NULL, export_wh REAL NOT NULL,"
+                "load_wh REAL NOT NULL, bat_charge_wh REAL NOT NULL, bat_discharge_wh REAL NOT NULL)"
             )
             self._db.commit()
             rows = self._db.execute(
@@ -98,9 +134,84 @@ class DataStore:
                 self._history.append({"ts": ts, "iso": iso, "values": json.loads(values)})
             if rows:
                 log.info("Historie aus %s geladen: %d Messpunkte", db_path, len(rows))
+            # PV-Stundenstatistik laden
+            for hour, total, count in self._db.execute(
+                "SELECT hour, total, count FROM pv_stats"
+            ).fetchall():
+                self._pv_stats[hour] = {"total": total, "count": count}
+            # Zuletzt persistierten Snapshot laden (Runtime, Settings, Status …)
+            self._load_snapshot_db()
         except Exception as exc:
             log.warning("Historie konnte nicht aus %s geladen werden: %s", db_path, exc)
             self._db = None
+
+    def _load_snapshot_db(self) -> None:
+        rows = self._db.execute("SELECT key, value FROM snapshot").fetchall()
+        data = {k: json.loads(v) for k, v in rows}
+        self._runtime = data.get("runtime", self._runtime)
+        self._settings = data.get("settings", self._settings)
+        self._device = data.get("device", self._device)
+        self._fields = data.get("fields", self._fields)
+        self._unsupported_settings = data.get("unsupported_settings", self._unsupported_settings)
+        self._metrics = data.get("metrics", self._metrics)
+        self._warning = data.get("warning", self._warning)
+        self._status.update(data.get("status", {}))
+        # Der Kern (Poller) setzt poll_interval bei jeder Loop-Iteration
+        # selbst; andere Prozesse (MCP/WebUI) übernehmen den DB-Wert.
+        if rows:
+            log.info("Snapshot aus DB geladen (%d Einträge)", len(rows))
+
+    def refresh_from_db(self) -> None:
+        """Lädt Snapshot & Historie neu aus der DB.
+
+        Wird von eigenständigen Prozessen (z. B. MCP-Server) genutzt, die
+        nicht selbst pollen, sondern die Daten des Kern-Services lesen.
+        """
+        if self._db is None:
+            return
+        with self._lock:
+            try:
+                self._load_snapshot_db()
+                rows = self._db.execute(
+                    'SELECT ts, iso, "values" FROM history ORDER BY ts DESC LIMIT ?',
+                    (self._history_size,),
+                ).fetchall()
+                self._history = deque(
+                    ({"ts": t, "iso": i, "values": json.loads(v)} for t, i, v in reversed(rows)),
+                    maxlen=self._history_size,
+                )
+                self._pv_stats = {
+                    hour: {"total": total, "count": count}
+                    for hour, total, count in self._db.execute(
+                        "SELECT hour, total, count FROM pv_stats"
+                    ).fetchall()
+                }
+            except Exception as exc:
+                log.warning("Refresh aus DB fehlgeschlagen: %s", exc)
+
+    def _persist_snapshot(self) -> None:
+        """Schreibt den kompletten Snapshot in die DB (für andere Prozesse)."""
+        if self._db is None:
+            return
+        try:
+            payload = {
+                "runtime": self._runtime,
+                "settings": self._settings,
+                "device": self._device,
+                "fields": self._fields,
+                "unsupported_settings": self._unsupported_settings,
+                "metrics": self._metrics,
+                "warning": self._warning,
+                "status": self._status,
+            }
+            for key, value in payload.items():
+                self._db.execute(
+                    "INSERT OR REPLACE INTO snapshot (key, value) VALUES (?, ?)",
+                    (key, json.dumps(value)),
+                )
+            self._db.commit()
+        except Exception as exc:
+            log.warning("Snapshot konnte nicht in DB geschrieben werden: %s", exc)
 
     def _persist_history_point(self, point: Dict[str, Any]) -> None:
         if self._db is None:
@@ -120,6 +231,34 @@ class DataStore:
         except Exception as exc:
             log.warning("Messpunkt konnte nicht in DB geschrieben werden: %s", exc)
 
+    def set_poll_interval(self, interval: float) -> None:
+        """Aktualisiert das effektive Abfrage-Intervall (aus config.toml)."""
+        with self._lock:
+            self._poll_interval = int(interval)
+            self._status["poll_interval"] = self._poll_interval
+
+    def add_pv_sample(self, hour: int, value: float) -> None:
+        """Führt einen ppv-Messwert in die Stundenstatistik ein (persistent)."""
+        with self._lock:
+            self._add_pv_sample_locked(hour, value)
+
+    def _add_pv_sample_locked(self, hour: int, value: float) -> None:
+        """Wie add_pv_sample, aber ohne Lock (Caller hält den Lock bereits)."""
+        slot = self._pv_stats.setdefault(hour, {"total": 0.0, "count": 0.0})
+        slot["total"] += value
+        slot["count"] += 1
+        if self._db is not None:
+            try:
+                self._db.execute(
+                    "INSERT INTO pv_stats (hour, total, count) VALUES (?, ?, ?) "
+                    "ON CONFLICT(hour) DO UPDATE SET "
+                    "total = total + excluded.total, count = count + excluded.count",
+                    (hour, float(value), 1),
+                )
+                self._db.commit()
+            except Exception as exc:
+                log.warning("PV-Statistik konnte nicht geschrieben werden: %s", exc)
+
     def update(
         self,
         runtime: Dict[str, Any],
@@ -127,6 +266,8 @@ class DataStore:
         device: Dict[str, Any],
         fields: list,
         unsupported_settings: Optional[list] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        warning: Optional[Dict[str, Any]] = None,
     ) -> None:
         with self._lock:
             self._runtime = {k: _jsonable(v) for k, v in (runtime or {}).items()}
@@ -134,6 +275,12 @@ class DataStore:
             self._device = {k: _jsonable(v) for k, v in (device or {}).items()}
             self._fields = [{**f, "value": _jsonable(f.get("value"))} for f in fields]
             self._unsupported_settings = list(unsupported_settings or [])
+            self._metrics = {k: _jsonable(v) for k, v in (metrics or {}).items()}
+            self._warning = {k: _jsonable(v) for k, v in (warning or {}).items()}
+            # PV-Leistung in die Stundenstatistik einfließen lassen
+            ppv = self._runtime.get("ppv")
+            if isinstance(ppv, (int, float)) and not isinstance(ppv, bool):
+                self._add_pv_sample_locked(datetime.now().astimezone().hour, float(ppv))
             self._status["online"] = True
             self._status["last_error"] = None
             self._status["success_count"] += 1
@@ -154,6 +301,86 @@ class DataStore:
                 }
             )
             self._persist_history_point(self._history[-1])
+            self._persist_snapshot()
+            self._update_energy_counters()
+
+    def _update_energy_counters(self) -> None:
+        """Persistiert Zähler-Deltas (kWh → Wh) der Wechselrichter-Tageszähler.
+
+        Wird nur im Kern (Poller) aufgerufen. Überspringt Lücken
+        (Neustart/Offline), damit keine falschen Deltas entstehen.
+        """
+        cur = {}
+        for k, field in ENERGY_COUNTER_FIELDS.items():
+            v = self._runtime.get(field)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                cur[k] = float(v)
+        now_ts = time.time()
+        if len(cur) != len(ENERGY_COUNTER_FIELDS):
+            self._prev_counters = None
+            self._last_counter_ts = now_ts
+            return
+
+        prev = self._prev_counters
+        self._prev_counters = cur
+        if prev is None or self._last_counter_ts is None:
+            self._last_counter_ts = now_ts
+            return
+
+        dt = now_ts - self._last_counter_ts
+        self._last_counter_ts = now_ts
+        if dt <= 0 or dt > max(5 * self._poll_interval, 120):
+            return  # Lücke – kein Delta, damit die Bilanz nicht verfälscht wird
+
+        deltas = {}
+        for k in ENERGY_COUNTER_FIELDS:
+            new, old = cur[k], prev[k]
+            # Tageszähler-Reset um Mitternacht (new < old) → neuer Tageswert
+            delta = new if new < old else new - old
+            deltas[k] = max(0.0, delta) * 1000.0  # kWh → Wh
+
+        if self._db is not None:
+            try:
+                self._db.execute(
+                    "INSERT OR REPLACE INTO energy_delta "
+                    "(ts, iso, dt, pv_wh, import_wh, export_wh, load_wh, "
+                    "bat_charge_wh, bat_discharge_wh) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (now_ts, _now_iso(), dt, deltas["pv_wh"], deltas["import_wh"],
+                     deltas["export_wh"], deltas["load_wh"],
+                     deltas["bat_charge_wh"], deltas["bat_discharge_wh"]),
+                )
+                # Alte Deltas aufräumen (Retention)
+                self._db.execute(
+                    "DELETE FROM energy_delta WHERE ts < ?",
+                    (now_ts - self._energy_retention_days * 86400,),
+                )
+                self._db.commit()
+            except Exception as exc:
+                log.warning("Energie-Delta konnte nicht geschrieben werden: %s", exc)
+
+    def query_energy_deltas(self, from_ts: float, to_ts: float) -> list:
+        """Liefert die persistierten Energie-Deltas im Zeitraum (aufsteigend)."""
+        if self._db is None:
+            return []
+        try:
+            rows = self._db.execute(
+                "SELECT ts, dt, pv_wh, import_wh, export_wh, load_wh, "
+                "bat_charge_wh, bat_discharge_wh FROM energy_delta "
+                "WHERE ts >= ? AND ts <= ? ORDER BY ts",
+                (from_ts, to_ts),
+            ).fetchall()
+            return [
+                {
+                    "ts": r[0], "dt": r[1], "pv_wh": r[2], "import_wh": r[3],
+                    "export_wh": r[4], "load_wh": r[5],
+                    "bat_charge_wh": r[6], "bat_discharge_wh": r[7],
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            log.warning("Energie-Deltas konnten nicht gelesen werden: %s", exc)
+            return []
 
     def set_error(self, message: str) -> None:
         with self._lock:
@@ -172,7 +399,23 @@ class DataStore:
             fields = [dict(f) for f in self._fields]
             status = dict(self._status)
             unsupported_settings = list(self._unsupported_settings)
+            metrics = dict(self._metrics)
+            warning = dict(self._warning)
             last_ts = self._history[-1]["iso"] if self._history else None
+            last_point_ts = self._history[-1]["ts"] if self._history else None
+            poll_interval = status.get("poll_interval", 60)
+
+        # Daten-Alter prüfen: liefert der Kern-Service keine aktuellen Daten
+        # mehr (z. B. gestoppt), den Status als offline markieren.
+        if last_point_ts is not None:
+            age = time.time() - last_point_ts
+            if age > max(90, 3 * poll_interval):
+                status["online"] = False
+                status["last_error"] = (
+                    f"Daten veraltet (letzte Abfrage vor {age / 60:.0f} min) – "
+                    "läuft der Kern-Service (goodwe.service)?"
+                )
+
         return {
             "status": status,
             "last_update": last_ts,
@@ -181,6 +424,15 @@ class DataStore:
             "runtime": runtime,
             "settings": settings,
             "unsupported_settings": unsupported_settings,
+            "metrics": metrics,
+            "warning": warning,
+            "pv_stats": {
+                str(hour): {
+                    "avg_w": round(slot["total"] / slot["count"], 1) if slot["count"] else 0.0,
+                    "samples": int(slot["count"]),
+                }
+                for hour, slot in self._pv_stats.items()
+            },
         }
 
     def history(self, minutes: Optional[int] = None, max_points: Optional[int] = None) -> list:

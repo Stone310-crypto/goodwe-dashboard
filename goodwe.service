@@ -1,5 +1,5 @@
 [Unit]
-Description=GoodWe Monitor Service (Poller + WebUI + API + MCP)
+Description=GoodWe Monitor Kern-Service (Poller + API)
 After=network-online.target
 Wants=network-online.target
 
