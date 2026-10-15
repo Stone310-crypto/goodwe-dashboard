@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 
 from datastore import DataStore
 
-PERIODS = ("today", "week", "month", "year")
+PERIODS = ("today", "yesterday", "week", "month", "year")
 
 COUNTER_FIELDS = {
     "pv_wh": "e_day",
@@ -33,11 +33,13 @@ def _local_now() -> datetime:
 
 
 def get_period_range(period: str) -> tuple[datetime, datetime]:
-    """Zeitbereich für today/week/month/year in lokaler Zeitzone."""
+    """Zeitbereich für today/yesterday/week/month/year in lokaler Zeitzone."""
     now = _local_now()
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if period == "today":
         return midnight, now
+    if period == "yesterday":
+        return midnight - timedelta(days=1), midnight
     if period == "week":
         return midnight - timedelta(days=midnight.weekday()), now  # Montag 00:00
     if period == "month":

@@ -114,7 +114,7 @@ def create_server(store: DataStore) -> MCPServer:
         des Verbrauchs ohne Netzbezug gedeckt wurden.
 
         Args:
-            period: Zeitraum – "today", "week", "month" oder "year".
+            period: Zeitraum – "today", "yesterday", "week", "month" oder "year".
         """
         store.refresh_from_db()
         try:
@@ -129,7 +129,7 @@ def create_server(store: DataStore) -> MCPServer:
         Autarkie- und Eigenverbrauchsquote.
 
         Args:
-            period: Zeitraum – "today", "week", "month" oder "year".
+            period: Zeitraum – "today", "yesterday", "week", "month" oder "year".
         """
         store.refresh_from_db()
         try:
