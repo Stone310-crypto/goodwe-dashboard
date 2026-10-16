@@ -181,6 +181,7 @@ details[open] > summary { margin-bottom: 10px; }
   <div class="chart-row">
     <select id="energy-period">
       <option value="today">Heute</option>
+      <option value="yesterday">Gestern</option>
       <option value="week">Diese Woche</option>
       <option value="month">Dieser Monat</option>
       <option value="year">Dieses Jahr</option>
@@ -189,6 +190,21 @@ details[open] > summary { margin-bottom: 10px; }
     <span class="chart-meta" id="energy-meta"></span>
   </div>
   <div class="cards" id="energy-cards"></div>
+</section>
+
+<section>
+  <h2>Stromverbrauch pro Tag</h2>
+  <div class="chart-row">
+    <select id="daily-days">
+      <option value="7">letzte 7 Tage</option>
+      <option value="14" selected>letzte 14 Tage</option>
+      <option value="30">letzte 30 Tage</option>
+    </select>
+    <button id="btn-refresh-daily">Aktualisieren</button>
+    <span class="chart-meta" id="daily-meta"></span>
+  </div>
+  <div class="chart-wrap" id="daily-chart"></div>
+  <div class="chart-meta" id="daily-sum"></div>
 </section>
 
 <section>
@@ -710,6 +726,83 @@ async function renderEnergy() {
     (b.source === "power_integration" ? " · Quelle: Leistungs-Integration" : " · Quelle: Wechselrichter-Zähler");
 }
 
+/* ---------- Stromverbrauch pro Tag ---------- */
+
+async function renderDailyEnergy() {
+  const days = parseInt($("daily-days").value, 10);
+  const wrap = $("daily-chart");
+  const meta = $("daily-meta");
+  const sumEl = $("daily-sum");
+  let data;
+  try {
+    data = await mcpCall("get_daily_energy", { days: days });
+  } catch (e) {
+    meta.textContent = "Fehler beim Laden: " + e.message;
+    return;
+  }
+  const list = data.days || [];
+  if (list.length === 0) {
+    wrap.innerHTML = '<div class="empty">Noch keine Tagesdaten – wird ab dem ersten vollen Tag aufgebaut.</div>';
+    meta.textContent = "";
+    sumEl.textContent = "";
+    return;
+  }
+  const W = 1100, H = 240, padL = 58, padR = 14, padT = 14, padB = 30;
+  const maxVal = Math.max(1, ...list.map(d => Math.max(d.consumption_kwh, d.production_kwh)));
+  const n = list.length;
+  const bw = (W - padL - padR) / n;
+  const y = (v) => padT + (maxVal - v) / maxVal * (H - padT - padB);
+
+  let bars = "";
+  list.forEach((d, i) => {
+    const x0 = padL + i * bw;
+    const cw = bw * 0.3;
+    const hc = Math.max(0, (H - padT - padB) * (d.consumption_kwh / maxVal));
+    const hp = Math.max(0, (H - padT - padB) * (d.production_kwh / maxVal));
+    bars +=
+      '<rect x="' + (x0 + bw * 0.2).toFixed(1) + '" y="' + (padT + (H - padT - padB) - hc).toFixed(1) +
+      '" width="' + cw.toFixed(1) + '" height="' + Math.max(hc, 0.5).toFixed(1) +
+      '" fill="#3da9fc" opacity="0.9"><title>' + d.date + ': Verbrauch ' +
+      fmt(d.consumption_kwh, true) + ' kWh' + (d.complete ? '' : ' (unvollständig)') + '</title></rect>' +
+      '<rect x="' + (x0 + bw * 0.55).toFixed(1) + '" y="' + (padT + (H - padT - padB) - hp).toFixed(1) +
+      '" width="' + cw.toFixed(1) + '" height="' + Math.max(hp, 0.5).toFixed(1) +
+      '" fill="#f1c40f" opacity="0.9"><title>' + d.date + ': Produktion ' +
+      fmt(d.production_kwh, true) + ' kWh</title></rect>';
+    // unvollständige Tage markieren
+    if (!d.complete) {
+      bars += '<text x="' + (x0 + bw / 2).toFixed(1) + '" y="' + (H - 4) +
+        '" fill="#8b98a5" font-size="10" text-anchor="middle">!</text>';
+    }
+  });
+
+  const labelStep = Math.max(1, Math.ceil(n / 14));
+  const labels = list.map((d, i) => {
+    if (i % labelStep !== 0) return "";
+    const lbl = d.date.slice(5).replace("-", ".");
+    return '<text x="' + (padL + i * bw + bw / 2).toFixed(1) + '" y="' + (H - 8) +
+      '" fill="#8b98a5" font-size="11" text-anchor="middle">' + lbl + "</text>";
+  }).join("");
+
+  const grid = [0.25, 0.5, 0.75, 1].map(f =>
+    '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(maxVal * f).toFixed(1) +
+    '" y2="' + y(maxVal * f).toFixed(1) + '" stroke="#2a3542" stroke-dasharray="4 4"/>' +
+    '<text x="' + (padL - 8) + '" y="' + (y(maxVal * f) + 4).toFixed(1) +
+    '" fill="#8b98a5" font-size="11" text-anchor="end">' + (maxVal * f).toLocaleString("de-DE", { maximumFractionDigits: 0 }) + '</text>'
+  ).join("");
+
+  wrap.innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="min-width:640px">' +
+    '<rect x="' + padL + '" y="' + padT + '" width="' + (W - padL - padR) + '" height="' + (H - padT - padB) + '" fill="#0f141a"/>' +
+    grid + bars + labels + '</svg>';
+
+  const totalCons = list.reduce((a, d) => a + d.consumption_kwh, 0);
+  const totalProd = list.reduce((a, d) => a + d.production_kwh, 0);
+  const complete = list.filter(d => d.complete).length;
+  meta.textContent = "Blau = Verbrauch · Gelb = PV-Produktion · „!“ = Tag mit Datenlücken";
+  sumEl.textContent = list.length + " Tage: Verbrauch Σ " + fmt(totalCons, true) +
+    " kWh · Produktion Σ " + fmt(totalProd, true) + " kWh · " + complete + " vollständig erfasst";
+}
+
 /* ---------- Laden / Refresh ---------- */
 
 async function refresh() {
@@ -811,11 +904,15 @@ renderChart();
 loadConfigForm();
 renderPvStats();
 renderEnergy();
+renderDailyEnergy();
 setInterval(refresh, 10000); // UI alle 10 s aktualisieren (Polling läuft ebenfalls alle 10 s)
 setInterval(renderPvStats, 60000); // PV-Profil jede Minute neu
 setInterval(renderEnergy, 60000); // Energie-Bilanz jede Minute neu
+setInterval(renderDailyEnergy, 60000); // Tagesverbrauch jede Minute neu
 $("energy-period").addEventListener("change", renderEnergy);
 $("btn-refresh-energy").addEventListener("click", renderEnergy);
+$("daily-days").addEventListener("change", renderDailyEnergy);
+$("btn-refresh-daily").addEventListener("click", renderDailyEnergy);
 </script>
 </body>
 </html>

@@ -68,8 +68,9 @@ Verfügbare Tools:
 | `get_history` | Historie; Args: `fields`, `minutes`, `max_points` |
 | `get_metrics` | Batterie-Kennzahlen (Ladezustand, kWh, Lade-/Entladezeit, Autonomie) + Verbrauchswarnung |
 | `get_pv_stats` | PV-Tagesprofil: Ø-Leistung je Stunde + beste Stunde |
-| `get_autarky` | Autarkiegrad: (Verbrauch − Netzbezug) / Verbrauch; Args: `period` (today/week/month/year) |
+| `get_autarky` | Autarkiegrad: (Verbrauch − Netzbezug) / Verbrauch; Args: `period` (today/yesterday/week/month/year) |
 | `get_energy_balance` | Vollständige Energie-Bilanz (PV, Verbrauch, Netz, Batterie, Autarkie, Eigenverbrauch); Args: `period` |
+| `get_daily_energy` | Stromverbrauch je Tag (plus Produktion, Netz, Batterie) für die letzten N Tage; Args: `days` (1–400) |
 | `get_config` | Benutzer-Einstellungen aus `config.toml` |
 | `update_config` | Einstellungen ändern; Args: `battery_capacity_kwh`, `warning_threshold_w`, `poll_interval_seconds` |
 
@@ -104,6 +105,7 @@ Verfügbare Tools:
 | `GET /api/history` | Historie, z. B. `?fields=battery_soc,ppv&minutes=60&max_points=400` |
 | `GET /api/autarky` | Autarkiegrad, z. B. `?period=today` |
 | `GET /api/energy_balance` | Energie-Bilanz, z. B. `?period=week` |
+| `GET /api/daily_energy` | Stromverbrauch je Tag, z. B. `?days=14` |
 
 CORS ist für API und MCP freigeschaltet.
 
@@ -131,6 +133,10 @@ CORS ist für API und MCP freigeschaltet.
   (`data_completeness`), damit Offline-Lücken sichtbar bleiben.
 - **Live-Netzbezug**: aktuelle Netz-Leistung mit Richtung
   (`grid_in_out_label`: Importing/Exporting) in den Batterie-Karten.
+- **Stromverbrauch pro Tag**: Balkendiagramm (Verbrauch blau, PV-Produktion
+  gelb) für die letzten 7/14/30 Tage. Heute stammt aus den Live-Zählern des
+  Wechselrichters, vorherige Tage aus den pro Poll persistierten
+  Zähler-Deltas; Tage mit Datenlücken werden mit „!“ markiert.
 - **Verbrauchswarnung**: überschreitet der Hausverbrauch die Schwelle,
   erscheint ein Warnbanner („⚡ Hoher Verbrauch …“); im Log wird die
   Überschreitung protokolliert.

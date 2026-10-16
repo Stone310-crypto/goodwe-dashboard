@@ -138,6 +138,19 @@ def create_server(store: DataStore) -> MCPServer:
             return {"error": str(exc)}
 
     @server.tool()
+    def get_daily_energy(days: int = 14) -> dict:
+        """Liefert den Stromverbrauch je Tag (plus PV-Produktion, Netzbezug,
+        Einspeisung und Batterie) für die letzten N Tage.
+
+        Args:
+            days: Anzahl Tage (1–400, Standard 14). Heute stammt aus den
+                  Live-Zählern des Wechselrichters, vorherige Tage aus den
+                  persistierten Zähler-Deltas.
+        """
+        store.refresh_from_db()
+        return calculator.compute_daily(days)
+
+    @server.tool()
     def get_config() -> dict:
         """Liefert die Benutzer-Einstellungen aus config.toml (Batteriekapazität, Warnschwelle, Abfrage-Intervall)."""
         return user_config.load()

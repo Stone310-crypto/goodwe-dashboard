@@ -87,4 +87,9 @@ def create_app(store: DataStore) -> FastAPI:
         except ValueError as exc:
             return {"error": str(exc)}
 
+    @app.get("/api/daily_energy")
+    async def get_daily_energy(days: int = Query(default=14, ge=1, le=400)):
+        """Stromverbrauch je Tag für die letzten N Tage."""
+        return calculator.compute_daily(days)
+
     return app

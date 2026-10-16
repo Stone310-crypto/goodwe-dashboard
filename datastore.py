@@ -125,6 +125,10 @@ class DataStore:
                 "pv_wh REAL NOT NULL, import_wh REAL NOT NULL, export_wh REAL NOT NULL,"
                 "load_wh REAL NOT NULL, bat_charge_wh REAL NOT NULL, bat_discharge_wh REAL NOT NULL)"
             )
+            # Migration: Tagesspalte für die Tages-Statistik
+            cols = [r[1] for r in self._db.execute("PRAGMA table_info(energy_delta)").fetchall()]
+            if "day" not in cols:
+                self._db.execute("ALTER TABLE energy_delta ADD COLUMN day TEXT")
             self._db.commit()
             rows = self._db.execute(
                 'SELECT ts, iso, "values" FROM history ORDER BY ts DESC LIMIT ?',
@@ -341,14 +345,24 @@ class DataStore:
 
         if self._db is not None:
             try:
+                # Alte Zeilen ohne Tagesspalte nachpflegen (einmalig nach Migration)
+                missing = self._db.execute(
+                    "SELECT ts FROM energy_delta WHERE day IS NULL LIMIT 5000"
+                ).fetchall()
+                for (ts,) in missing:
+                    day = datetime.fromtimestamp(ts).astimezone().strftime("%Y-%m-%d")
+                    self._db.execute(
+                        "UPDATE energy_delta SET day=? WHERE ts=?", (day, ts)
+                    )
                 self._db.execute(
                     "INSERT OR REPLACE INTO energy_delta "
                     "(ts, iso, dt, pv_wh, import_wh, export_wh, load_wh, "
-                    "bat_charge_wh, bat_discharge_wh) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "bat_charge_wh, bat_discharge_wh, day) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (now_ts, _now_iso(), dt, deltas["pv_wh"], deltas["import_wh"],
                      deltas["export_wh"], deltas["load_wh"],
-                     deltas["bat_charge_wh"], deltas["bat_discharge_wh"]),
+                     deltas["bat_charge_wh"], deltas["bat_discharge_wh"],
+                     datetime.now().astimezone().strftime("%Y-%m-%d")),
                 )
                 # Alte Deltas aufräumen (Retention)
                 self._db.execute(
@@ -358,6 +372,31 @@ class DataStore:
                 self._db.commit()
             except Exception as exc:
                 log.warning("Energie-Delta konnte nicht geschrieben werden: %s", exc)
+
+    def query_daily_energy(self, from_day: str, to_day: str) -> list:
+        """Tages-Aggregate (Wh je Fluss + Abdeckung) je lokalem Datum."""
+        if self._db is None:
+            return []
+        try:
+            rows = self._db.execute(
+                "SELECT day, SUM(pv_wh), SUM(import_wh), SUM(export_wh), "
+                "SUM(load_wh), SUM(bat_charge_wh), SUM(bat_discharge_wh), SUM(dt) "
+                "FROM energy_delta WHERE day >= ? AND day <= ? AND day IS NOT NULL "
+                "GROUP BY day ORDER BY day",
+                (from_day, to_day),
+            ).fetchall()
+            return [
+                {
+                    "day": r[0], "pv_wh": r[1] or 0.0, "import_wh": r[2] or 0.0,
+                    "export_wh": r[3] or 0.0, "load_wh": r[4] or 0.0,
+                    "bat_charge_wh": r[5] or 0.0, "bat_discharge_wh": r[6] or 0.0,
+                    "covered_seconds": r[7] or 0.0,
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            log.warning("Tages-Aggregate konnten nicht gelesen werden: %s", exc)
+            return []
 
     def query_energy_deltas(self, from_ts: float, to_ts: float) -> list:
         """Liefert die persistierten Energie-Deltas im Zeitraum (aufsteigend)."""

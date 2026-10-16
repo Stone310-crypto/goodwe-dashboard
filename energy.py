@@ -209,6 +209,69 @@ class EnergyCalculator:
             "grid_dependency_percent": round(100.0 - autarky, 1) if autarky is not None else None,
         }
 
+    def compute_daily(self, days: int = 14) -> dict:
+        """Stromverbrauch (und weitere Flüsse) je Tag für die letzten N Tage.
+
+        Heute: Live-Tageszähler des Wechselrichters (vollständig).
+        Vorherige Tage: persistierte Zähler-Deltas (energy_delta), aggregiert
+        je lokalem Datum; `complete` zeigt, ob der Tag durchgehend erfasst wurde.
+        """
+        days = max(1, min(int(days), 400))
+        today = _local_now().date()
+        from_day = (today - timedelta(days=days - 1)).isoformat()
+        prev = {r["day"]: r for r in self.store.query_daily_energy(from_day, today.isoformat())}
+
+        out = []
+        for offset in range(days - 1, 0, -1):  # ältester Tag zuerst, ohne heute
+            date = (today - timedelta(days=offset)).isoformat()
+            r = prev.get(date)
+            if r is None:
+                continue  # kein Datenbestand für diesen Tag
+            covered = min(1.0, r["covered_seconds"] / 86400.0)
+            out.append({
+                "date": date,
+                "consumption_kwh": round(r["load_wh"] / 1000.0, 3),
+                "production_kwh": round(r["pv_wh"] / 1000.0, 3),
+                "import_kwh": round(r["import_wh"] / 1000.0, 3),
+                "export_kwh": round(r["export_wh"] / 1000.0, 3),
+                "battery_charge_kwh": round(r["bat_charge_wh"] / 1000.0, 3),
+                "battery_discharge_kwh": round(r["bat_discharge_wh"] / 1000.0, 3),
+                "covered_hours": round(r["covered_seconds"] / 3600.0, 1),
+                "complete": covered >= 0.95,
+                "source": "energy_deltas",
+            })
+
+        # Heute: Live-Zähler sind für den bisherigen Tag immer vollständig
+        runtime = self.store.snapshot().get("runtime", {})
+        counters = {}
+        for field in ("e_load_day", "e_day", "e_day_imp", "e_day_exp",
+                      "e_bat_charge_day", "e_bat_discharge_day"):
+            v = runtime.get(field)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                counters[field] = float(v)
+        if len(counters) == 6:
+            elapsed = (_local_now() - _local_now().replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+            out.append({
+                "date": today.isoformat(),
+                "consumption_kwh": round(counters["e_load_day"], 3),
+                "production_kwh": round(counters["e_day"], 3),
+                "import_kwh": round(counters["e_day_imp"], 3),
+                "export_kwh": round(counters["e_day_exp"], 3),
+                "battery_charge_kwh": round(counters["e_bat_charge_day"], 3),
+                "battery_discharge_kwh": round(counters["e_bat_discharge_day"], 3),
+                "covered_hours": round(elapsed / 3600.0, 1),
+                "complete": True,
+                "source": "inverter_counters",
+            })
+
+        return {
+            "days": out,
+            "from": from_day,
+            "to": today.isoformat(),
+            "unit": "kWh",
+            "estimate": True,
+        }
+
     def compute_autarky(self, period: str = "today") -> dict:
         bal = self.compute_balance(period)
         return {
