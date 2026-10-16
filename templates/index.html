@@ -2,598 +2,522 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GoodWe Monitor</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Onest:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
+:root { color-scheme: light; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+/* Layout: Kopfzeile und Reiter, darunter fünf wählbare Ringe, Alarm-Karte und Energie-Bilanz; Detailansicht als Sheet */
 :root {
-  --bg: #0f141a;
-  --panel: #171e27;
-  --panel2: #1d2631;
-  --border: #2a3542;
-  --text: #e8edf2;
-  --muted: #8b98a5;
-  --accent: #3da9fc;
-  --green: #2ecc71;
-  --red: #e74c3c;
-  --amber: #f1c40f;
+  --bg: #edf1f3;
+  --surface: #ffffff;
+  --surface2: #f3f6f8;
+  --line: #dce4e9;
+  --track: #e3eaee;
+  --ink: #0f1a22;
+  --ink2: #4a5a66;
+  --ink3: #6f808b;
+  --accent: #0e8a8c;
+  --accent-ink: #ffffff;
+  --c-pv: #d98f00;
+  --c-house: #6a58d6;
+  --c-grid: #2c7be0;
+  --c-bat: #1b9c62;
+  --c-aux: #0e8a8c;
+  --good: #1b9c62;
+  --bad: #d63a3a;
+  --bad-soft: #fde9e9;
+  --warn-soft: #fff3d4;
+  --shadow: 0 1px 2px rgba(15, 26, 34, .06), 0 10px 28px rgba(15, 26, 34, .07);
+  --scrim: rgba(8, 14, 18, .5);
+  --f-display: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-body: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a1116;
+    --surface: #111b22;
+    --surface2: #16232c;
+    --line: #223341;
+    --track: #1c2c37;
+    --ink: #e7eef2;
+    --ink2: #a3b4bf;
+    --ink3: #7790a0;
+    --accent: #35c6c0;
+    --accent-ink: #04201f;
+    --c-pv: #ffc23d;
+    --c-house: #9d8fff;
+    --c-grid: #5ba3ff;
+    --c-bat: #3ddc97;
+    --c-aux: #35c6c0;
+    --good: #3ddc97;
+    --bad: #ff6b6b;
+    --bad-soft: #3a1c20;
+    --warn-soft: #3a2f10;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px rgba(0, 0, 0, .35);
+    --scrim: rgba(0, 0, 0, .62);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a1116;
+  --surface: #111b22;
+  --surface2: #16232c;
+  --line: #223341;
+  --track: #1c2c37;
+  --ink: #e7eef2;
+  --ink2: #a3b4bf;
+  --ink3: #7790a0;
+  --accent: #35c6c0;
+  --accent-ink: #04201f;
+  --c-pv: #ffc23d;
+  --c-house: #9d8fff;
+  --c-grid: #5ba3ff;
+  --c-bat: #3ddc97;
+  --c-aux: #35c6c0;
+  --good: #3ddc97;
+  --bad: #ff6b6b;
+  --bad-soft: #3a1c20;
+  --warn-soft: #3a2f10;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px rgba(0, 0, 0, .35);
+  --scrim: rgba(0, 0, 0, .62);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
 body {
-  background: var(--bg); color: var(--text);
-  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  padding: 16px; min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 14px;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 48px;
 }
-header {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 12px; padding: 14px 18px; margin-bottom: 14px;
-}
-header h1 { font-size: 20px; font-weight: 650; }
-.badge {
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+button { font: inherit; color: inherit; }
+.mono { font-family: var(--f-mono); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* Kopfzeile */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand svg { width: 28px; height: 28px; color: var(--c-pv); flex: none; }
+.brand h1 { font-size: 23px; font-weight: 700; letter-spacing: -.01em; }
+.pill {
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
-  background: var(--panel2); border: 1px solid var(--border);
+  padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink2);
 }
-.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
-.dot.off { background: var(--red); box-shadow: 0 0 8px var(--red); }
-.info { color: var(--muted); font-size: 13px; line-height: 1.6; }
-.info b { color: var(--text); font-weight: 600; }
-.spacer { flex: 1; }
-section {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 12px; padding: 14px 18px; margin-bottom: 14px;
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+.dot.on { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+.pill.demo { color: var(--c-pv); border-color: color-mix(in srgb, var(--c-pv) 45%, var(--line)); }
+.top .grow { flex: 1; }
+.meta { font-size: 12px; color: var(--ink3); font-family: var(--f-mono); min-width: 0; overflow-wrap: anywhere; }
+.meta b { color: var(--ink2); font-weight: 500; }
+
+/* Reiter */
+.tabs { display: flex; gap: 4px; overflow-x: auto; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button {
+  flex: 1 0 auto; border: 0; background: transparent; padding: 9px 16px; border-radius: 10px;
+  font-weight: 600; font-size: 13.5px; color: var(--ink2); cursor: pointer; white-space: nowrap;
 }
-section h2 { font-size: 15px; margin-bottom: 10px; color: var(--accent); font-weight: 650; }
-.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-.toolbar input[type=search] {
-  flex: 1; min-width: 180px; max-width: 420px;
-  background: var(--bg); border: 1px solid var(--border); color: var(--text);
-  border-radius: 8px; padding: 8px 12px; font-size: 14px; outline: none;
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+.tabs button:not([aria-selected="true"]):hover { background: var(--surface2); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.panel { display: flex; flex-direction: column; gap: 16px; }
+
+/* Hinweise */
+.banner { border-radius: 14px; padding: 12px 16px; font-size: 13.5px; border: 1px solid; display: flex; gap: 10px; align-items: flex-start; }
+.banner svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.banner.err { background: var(--warn-soft); border-color: var(--c-pv); }
+.banner.alarm { background: var(--bad-soft); border-color: var(--bad); font-weight: 600; }
+.banner.alarm svg { color: var(--bad); }
+
+/* Karten und Köpfe */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 14px; }
+.head h2 { font-size: 18px; font-weight: 650; }
+.head .hint { color: var(--ink3); font-size: 12.5px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 7px; background: var(--surface2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 13px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--ink);
 }
-.toolbar input[type=search]:focus { border-color: var(--accent); }
-button {
-  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+.btn:hover { border-color: var(--accent); }
+.btn svg { width: 16px; height: 16px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.icon { padding: 8px; }
+
+/* Ringe */
+.rings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rings .ring-card:first-child { grid-column: 1 / -1; }
+@media (min-width: 760px) {
+  .rings { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .rings .ring-card:first-child { grid-column: auto; }
 }
-button:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #06131f; font-weight: 600; }
-.groups { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
-.group {
-  background: var(--panel2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px 12px; min-width: 210px; flex: 1;
+.ring-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+  padding: 14px 10px 14px; cursor: pointer; box-shadow: var(--shadow); min-width: 0;
+  transition: transform .15s ease, border-color .15s ease;
 }
-.group > label {
-  display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 14px;
-  cursor: pointer; margin-bottom: 6px;
+.ring-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.ring-card.alert { border-color: var(--bad); }
+.ring-label { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink3); }
+.ring-wrap { position: relative; width: min(100%, 148px); aspect-ratio: 1; max-width: 100%; }
+.rings .ring-card:first-child .ring-wrap { width: min(100%, 176px); }
+@media (min-width: 760px) { .rings .ring-card:first-child .ring-wrap { width: min(100%, 148px); } }
+.ring { width: 100%; height: 100%; display: block; }
+.ring-track { fill: none; stroke: var(--track); stroke-width: 11; }
+.ring-arc { fill: none; stroke-width: 11; stroke-linecap: round; transition: stroke-dashoffset .7s cubic-bezier(.3, .7, .2, 1), stroke .3s ease; }
+.ring-tick { stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; }
+.ring-val { font-family: var(--f-display); font-weight: 700; font-size: 29px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.ring-unit { font-size: 12px; color: var(--ink3); margin-top: 2px; }
+.ring-sub { font-size: 12.5px; color: var(--ink2); min-height: 2.6em; display: flex; align-items: flex-start; justify-content: center; }
+.ring-card.alert .ring-sub { color: var(--bad); font-weight: 600; }
+.ring-more { font-size: 11.5px; color: var(--accent); font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+.ring-more svg { width: 12px; height: 12px; }
+@media (prefers-reduced-motion: reduce) { .ring-arc, .ring-card { transition: none; } }
+
+/* Alarm */
+.alarm-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
+@media (min-width: 820px) { .alarm-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; } }
+.alarm-status { display: flex; align-items: center; gap: 12px; }
+.alarm-status .bell { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--surface2); color: var(--ink2); flex: none; }
+.alarm-status .bell svg { width: 22px; height: 22px; }
+.alarm-status.hot .bell { background: var(--bad-soft); color: var(--bad); }
+.alarm-status h3 { font-size: 16px; font-weight: 650; }
+.alarm-status p { margin: 2px 0 0; color: var(--ink2); font-size: 13px; }
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.field-row:first-of-type { border-top: 0; }
+.field-row label, .field-row .lbl { font-weight: 500; }
+.field-row small { display: block; color: var(--ink3); font-size: 12px; font-weight: 400; }
+.switch { width: 46px; height: 28px; border-radius: 999px; border: 0; background: var(--track); position: relative; cursor: pointer; flex: none; transition: background .2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s; }
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch[aria-checked="true"]::after { transform: translateX(18px); }
+.thr { display: flex; flex-direction: column; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.thr-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.numbox { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; }
+.numbox input { width: 82px; background: transparent; border: 0; color: var(--ink); font: 600 16px var(--f-mono); text-align: right; outline: none; padding: 4px 0; }
+.numbox:focus-within { border-color: var(--accent); }
+.numbox span { color: var(--ink3); font-size: 13px; }
+input[type=range] { width: 100%; accent-color: var(--accent); height: 28px; margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface2); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; font-family: var(--f-mono); }
+.chip:hover, .chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.save-note { font-size: 12.5px; color: var(--ink3); min-height: 1.4em; }
+.save-note.ok { color: var(--good); }
+.save-note.bad { color: var(--bad); }
+
+/* Segmente, Balken, Legenden */
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface2); border: 1px solid var(--line); border-radius: 11px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink2); cursor: pointer; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+.stack { display: flex; gap: 3px; height: 16px; border-radius: 999px; overflow: hidden; background: var(--track); }
+.stack i { display: block; height: 100%; min-width: 0; transition: width .5s ease; }
+.legend { display: flex; flex-direction: column; margin-top: 10px; }
+.legend .row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.legend .row:first-child { border-top: 0; }
+.legend .sw { width: 12px; height: 12px; border-radius: 4px; }
+.legend .v { font-family: var(--f-mono); font-weight: 500; font-size: 13.5px; }
+.legend .p { font-family: var(--f-mono); color: var(--ink3); font-size: 12.5px; min-width: 3.4em; text-align: right; }
+.empty { color: var(--ink3); padding: 8px 0; font-size: 13.5px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.tile { background: var(--surface2); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.tile .k { font-size: 12px; color: var(--ink3); }
+.tile .n { font-family: var(--f-display); font-weight: 700; font-size: 22px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.tile .n small { font-family: var(--f-body); font-weight: 400; font-size: 12.5px; color: var(--ink3); margin-left: 3px; }
+.tile .id { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink3); margin-top: 2px; overflow-wrap: anywhere; }
+.tile.stale .n { color: var(--c-pv); }
+.two { display: grid; grid-template-columns: 1fr; gap: 20px; }
+@media (min-width: 820px) { .two { grid-template-columns: 1fr 1fr; gap: 28px; } }
+.sub-h { font-size: 13px; font-weight: 600; color: var(--ink2); margin: 0 0 8px; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.sub-h small { font-weight: 400; color: var(--ink3); }
+
+/* Diagramme */
+.chart-box { width: 100%; min-width: 0; }
+.chart { display: block; width: 100%; height: auto; }
+.chart .t { fill: var(--ink3); font: 11px var(--f-mono); }
+.chart .g { stroke: var(--line); stroke-width: 1; }
+.chart .thr-line { stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart-meta { color: var(--ink3); font-size: 12px; margin-top: 6px; font-family: var(--f-mono); }
+.row-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+select, .row-tools input[type=search], .form input[type=number] {
+  background: var(--surface2); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 11px; font: 13px var(--f-body); max-width: 100%; min-width: 0;
 }
-.group .count { color: var(--muted); font-size: 12px; font-weight: 500; }
-.field {
-  display: flex; align-items: center; gap: 8px; font-size: 13px;
-  padding: 3px 0; color: var(--text);
-}
-.field input { accent-color: var(--accent); cursor: pointer; }
-.field .fid { color: var(--muted); font-size: 11px; }
-.field .unit { color: var(--muted); }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-.card {
-  background: var(--panel2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 12px 14px;
-}
-.card .cname { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-.card .cval { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.card .cunit { font-size: 13px; color: var(--muted); margin-left: 3px; }
-.card .cid { font-size: 10px; color: #5b6875; margin-top: 4px; font-family: monospace; }
-.card.stale .cval { color: var(--amber); }
-.empty { color: var(--muted); padding: 10px 0; font-size: 14px; }
-.chart-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-select {
-  background: var(--bg); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 10px; font-size: 13px; max-width: 360px;
-}
-.chart-wrap { width: 100%; overflow-x: auto; }
-.chart-wrap svg { display: block; }
-.chart-meta { color: var(--muted); font-size: 12px; margin-top: 6px; }
+select:focus, input[type=search]:focus, .form input[type=number]:focus { outline: none; border-color: var(--accent); }
+.row-tools input[type=search] { flex: 1 1 200px; max-width: 420px; }
+
+/* Messwerte-Auswahl */
+.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.group { background: var(--surface2); border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.group > label { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 13.5px; cursor: pointer; margin-bottom: 6px; }
+.group .count { color: var(--ink3); font-size: 12px; font-weight: 400; }
+.field { display: block; font-size: 12.5px; padding: 3px 0; }
+.field label { display: flex; align-items: baseline; gap: 6px; cursor: pointer; flex-wrap: wrap; }
+.field input, .group input { accent-color: var(--accent); cursor: pointer; margin: 0; align-self: center; }
+.field .fid { color: var(--ink3); font-size: 11px; font-family: var(--f-mono); }
+.field .unit { color: var(--ink3); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+
+/* Formular und Tabelle */
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: end; }
+.form label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--ink2); }
+.form input[type=number] { width: 100%; font-size: 15px; }
+.table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-th { color: var(--muted); font-weight: 600; font-size: 12px; }
-td.id { font-family: monospace; font-size: 12px; color: var(--muted); }
-details > summary { cursor: pointer; font-size: 14px; color: var(--accent); }
-details[open] > summary { margin-bottom: 10px; }
-.error-box {
-  display: none; background: #3a1d1d; border: 1px solid var(--red); color: #ffb4ac;
-  border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--ink3); font-weight: 600; font-size: 12px; }
+td.id { font-family: var(--f-mono); font-size: 12px; color: var(--ink3); }
+.dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 13px; }
+.dl dt { color: var(--ink3); }
+.dl dd { margin: 0; font-family: var(--f-mono); overflow-wrap: anywhere; }
+
+/* Sheet und Dialog */
+.overlay { position: fixed; inset: 0; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; z-index: 50; padding-top: env(safe-area-inset-top, 0px); }
+.sheet {
+  width: min(100%, 780px); max-height: 94%; overflow-y: auto; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 26px 26px 0 0; padding: 18px max(16px, env(safe-area-inset-left, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 14px; animation: rise .28s cubic-bezier(.2, .8, .2, 1);
 }
-.warn-box {
-  display: none; background: #3a2e0d; border: 1px solid var(--amber); color: #ffe6a8;
-  border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 600; margin-bottom: 14px;
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sheet { animation: none; } }
+@media (min-width: 820px) {
+  .overlay { align-items: center; padding: 24px; }
+  .sheet { border-radius: 26px; padding-bottom: 28px; max-height: 100%; }
 }
-.toolbar label.field-label {
-  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
-}
-.toolbar input[type=number] {
-  width: 110px; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-  border-radius: 8px; padding: 8px 10px; font-size: 14px; outline: none;
-}
-.toolbar input[type=number]:focus { border-color: var(--accent); }
-.cfg-status { color: var(--muted); font-size: 13px; }
-.cfg-status.ok { color: var(--green); }
-@media (max-width: 640px) { .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+.sh-head { display: flex; align-items: center; gap: 16px; }
+.sh-head .ring-wrap { width: 96px; flex: none; }
+.sh-head .ring-val { font-size: 21px; }
+.sh-head .ring-unit { font-size: 10.5px; }
+.sh-head .tt { flex: 1; min-width: 0; }
+.sh-head .tt .ring-label { margin-bottom: 2px; }
+.sh-head h2 { font-size: 26px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.sh-head h2 small { font-size: 15px; font-weight: 500; color: var(--ink3); margin-left: 4px; }
+.sh-head p { margin: 2px 0 0; color: var(--ink2); font-size: 13px; }
+.sh-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
+.pick-list { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 4px; }
+.pick-list label { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 13px; color: var(--ink2); }
+.pick-list .nr { width: 24px; height: 24px; border-radius: 50%; background: var(--surface2); display: grid; place-items: center; font: 600 12px var(--f-mono); color: var(--ink2); }
+.pick-list select { width: 100%; }
+.sheet .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>☀️ GoodWe Monitor</h1>
-  <span class="badge"><span id="status-dot" class="dot off"></span><span id="status-text">Offline</span></span>
-  <div class="info" id="device-info">…</div>
-  <div class="spacer"></div>
-  <div class="info" id="poll-info">…</div>
-</header>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="16" cy="16" r="5.5"/><path d="M16 3v4M16 25v4M3 16h4M25 16h4M6.8 6.8l2.8 2.8M22.4 22.4l2.8 2.8M25.2 6.8l-2.8 2.8M9.6 22.4l-2.8 2.8"/></svg>
+      <h1>GoodWe Monitor</h1>
+    </div>
+    <span class="pill"><span id="status-dot" class="dot"></span><span id="status-text">Offline</span></span>
+    <span class="pill demo" id="demo-pill" hidden>Vorschau mit Demo-Daten</span>
+    <button class="btn" id="demo-load" hidden type="button">Last simulieren</button>
+    <div class="grow"></div>
+    <div class="meta" id="poll-info">…</div>
+  </header>
 
-<div class="error-box" id="error-box"></div>
-<div class="warn-box" id="warn-box"></div>
+  <div class="banner err" id="error-box" role="status" hidden></div>
+  <div class="banner alarm" id="warn-box" role="alert" hidden></div>
 
-<section>
-  <h2>Batterie &amp; Verbrauch</h2>
-  <div class="cards" id="metric-cards"></div>
-</section>
+  <nav class="tabs" role="tablist" aria-label="Bereiche">
+    <button role="tab" id="tabbtn-overview" data-tab="overview" aria-selected="true" type="button">Übersicht</button>
+    <button role="tab" id="tabbtn-history" data-tab="history" aria-selected="false" type="button">Verlauf</button>
+    <button role="tab" id="tabbtn-values" data-tab="values" aria-selected="false" type="button">Messwerte</button>
+    <button role="tab" id="tabbtn-device" data-tab="device" aria-selected="false" type="button">Gerät</button>
+  </nav>
 
-<section id="sec-cards">
-  <h2>Messwerte <span class="info" id="cards-meta"></span></h2>
-  <div class="cards" id="cards"></div>
-</section>
+  <!-- Übersicht -->
+  <main class="panel" id="tab-overview" role="tabpanel" aria-labelledby="tabbtn-overview">
+    <section class="card">
+      <div class="head">
+        <div>
+          <h2>Jetzt</h2>
+          <div class="hint">Tippe auf einen Wert für alle Details.</div>
+        </div>
+        <button class="btn" id="btn-pick" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          Werte wählen
+        </button>
+      </div>
+      <div class="rings" id="rings"><div class="empty">Messwerte werden geladen …</div></div>
+    </section>
 
-<section>
-  <h2>Auswahl der Statistiken</h2>
-  <div class="toolbar">
-    <input type="search" id="search" placeholder="Feld suchen (Name oder ID) …">
-    <button id="btn-all">Alle auswählen</button>
-    <button id="btn-none">Keine</button>
-    <button id="btn-default" class="primary">Standard</button>
+    <section class="card" id="alarm-card">
+      <div class="alarm-grid">
+        <div>
+          <div class="alarm-status" id="alarm-status">
+            <div class="bell"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+            <div>
+              <h3 id="alarm-title">Verbrauchs-Alarm</h3>
+              <p id="alarm-text">…</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="field-row">
+            <div class="lbl">Alarm aktiv<small>Meldung oben, wenn der Hausverbrauch die Schwelle übersteigt</small></div>
+            <button class="switch" id="al-switch" role="switch" aria-checked="true" aria-label="Alarm aktiv" type="button"></button>
+          </div>
+          <div class="thr">
+            <div class="thr-top">
+              <label for="al-num" class="lbl">Schwelle</label>
+              <div class="numbox"><input type="number" id="al-num" min="100" max="15000" step="100" inputmode="numeric"><span>W</span></div>
+            </div>
+            <input type="range" id="al-range" min="500" max="10000" step="100" aria-label="Schwelle in Watt">
+            <div class="chips" id="al-chips"></div>
+            <div class="save-note" id="al-note"></div>
+          </div>
+          <div class="field-row">
+            <div class="lbl">Signalton<small>Kurzer Ton im Browser, sobald der Alarm auslöst</small></div>
+            <button class="switch" id="al-sound" role="switch" aria-checked="false" aria-label="Signalton" type="button"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <h2>Energie-Bilanz</h2>
+        <div class="seg" id="bal-seg" role="group" aria-label="Zeitraum"></div>
+      </div>
+      <div id="bal-body"><div class="empty">Bilanz wird geladen …</div></div>
+      <div class="chart-meta" id="bal-meta"></div>
+    </section>
+  </main>
+
+  <!-- Verlauf -->
+  <main class="panel" id="tab-history" role="tabpanel" aria-labelledby="tabbtn-history" hidden>
+    <section class="card">
+      <div class="head"><h2>Verlauf</h2></div>
+      <div class="row-tools">
+        <select id="chart-field" aria-label="Messwert"></select>
+        <div class="seg" id="chart-win" role="group" aria-label="Zeitfenster"></div>
+        <button class="btn" id="btn-refresh-chart" type="button">Aktualisieren</button>
+      </div>
+      <div class="chart-box" id="chart"></div>
+      <div class="chart-meta" id="chart-meta"></div>
+    </section>
+    <section class="card">
+      <div class="head"><h2>PV-Produktion · Ø je Stunde</h2></div>
+      <div class="chart-box" id="pv-chart"></div>
+      <div class="chart-meta" id="pv-meta"></div>
+    </section>
+    <section class="card">
+      <div class="head"><h2>Stromverbrauch pro Tag</h2>
+        <div class="seg" id="daily-seg" role="group" aria-label="Tage"></div>
+      </div>
+      <div class="chart-box" id="daily-chart"></div>
+      <div class="chart-meta" id="daily-meta"></div>
+      <div class="chart-meta" id="daily-sum"></div>
+    </section>
+  </main>
+
+  <!-- Messwerte -->
+  <main class="panel" id="tab-values" role="tabpanel" aria-labelledby="tabbtn-values" hidden>
+    <section class="card">
+      <div class="head"><h2>Messwerte <span class="hint" id="cards-meta"></span></h2></div>
+      <div class="cards" id="cards"></div>
+    </section>
+    <section class="card">
+      <div class="head"><h2>Auswahl der Statistiken</h2></div>
+      <div class="row-tools">
+        <input type="search" id="search" placeholder="Feld suchen (Name oder ID)" aria-label="Feld suchen">
+        <button class="btn" id="btn-all" type="button">Alle</button>
+        <button class="btn" id="btn-none" type="button">Keine</button>
+        <button class="btn primary" id="btn-default" type="button">Standard</button>
+      </div>
+      <div class="groups" id="groups"></div>
+    </section>
+  </main>
+
+  <!-- Gerät -->
+  <main class="panel" id="tab-device" role="tabpanel" aria-labelledby="tabbtn-device" hidden>
+    <section class="card">
+      <div class="head"><h2>Einstellungen</h2></div>
+      <div class="form">
+        <label for="cfg-capacity">Batteriekapazität (kWh)<input type="number" id="cfg-capacity" step="0.1" min="0.1"></label>
+        <label for="cfg-interval">Abfrage-Intervall (s)<input type="number" id="cfg-interval" step="1" min="2" max="600"></label>
+        <label for="cfg-pvmax">Ring-Skala PV (W, nur Anzeige)<input type="number" id="cfg-pvmax" step="100" min="500"></label>
+        <div><button class="btn primary" id="btn-save-config" type="button">Speichern</button></div>
+      </div>
+      <div class="save-note" id="cfg-status" style="margin-top:10px"></div>
+      <div class="chart-meta">Batteriekapazität und Intervall liegen in config.toml und gelten ohne Neustart. Die Ring-Skala wird nur in diesem Browser gespeichert. Die Alarm-Schwelle stellst du in der Übersicht ein.</div>
+    </section>
+    <section class="card">
+      <div class="head"><h2>Wechselrichter</h2></div>
+      <dl class="dl" id="device-dl"></dl>
+    </section>
+    <section class="card">
+      <div class="head"><h2>Wechselrichter-Settings <span class="hint" id="settings-count"></span></h2></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>ID</th><th>Wert</th></tr></thead>
+          <tbody id="settings-body"></tbody>
+        </table>
+      </div>
+      <div class="chart-meta" id="settings-unsupported"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Detailansicht -->
+<div class="overlay" id="sheet-overlay" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1">
+    <div id="sheet-body"></div>
   </div>
-  <div class="groups" id="groups"></div>
-</section>
+</div>
 
-<section>
-  <h2>Verlauf</h2>
-  <div class="chart-row">
-    <select id="chart-field"></select>
-    <select id="chart-window">
-      <option value="60">letzte Stunde</option>
-      <option value="360">letzte 6 Stunden</option>
-      <option value="1440">letzte 24 Stunden</option>
-    </select>
-    <button id="btn-refresh-chart">Aktualisieren</button>
+<!-- Werte wählen -->
+<div class="overlay" id="pick-overlay" hidden>
+  <div class="sheet" id="pick" role="dialog" aria-modal="true" aria-labelledby="pick-title" tabindex="-1">
+    <div>
+      <h2 id="pick-title" style="font-size:22px">Fünf Werte wählen</h2>
+      <div class="hint" style="color:var(--ink3);font-size:13px;margin-top:4px">Der erste Wert wird auf dem Handy am größten angezeigt.</div>
+    </div>
+    <div class="pick-list" id="pick-list"></div>
+    <div class="btns">
+      <button class="btn" id="pick-reset" type="button">Zurücksetzen</button>
+      <button class="btn" id="pick-cancel" type="button">Abbrechen</button>
+      <button class="btn primary" id="pick-save" type="button">Übernehmen</button>
+    </div>
   </div>
-  <div class="chart-wrap" id="chart"></div>
-  <div class="chart-meta" id="chart-meta"></div>
-</section>
-
-<section>
-  <h2>PV-Produktion · Ø je Stunde</h2>
-  <div class="chart-wrap" id="pv-chart"></div>
-  <div class="chart-meta" id="pv-meta"></div>
-</section>
-
-<section>
-  <h2>Energie-Bilanz</h2>
-  <div class="chart-row">
-    <select id="energy-period">
-      <option value="today">Heute</option>
-      <option value="yesterday">Gestern</option>
-      <option value="week">Diese Woche</option>
-      <option value="month">Dieser Monat</option>
-      <option value="year">Dieses Jahr</option>
-    </select>
-    <button id="btn-refresh-energy">Aktualisieren</button>
-    <span class="chart-meta" id="energy-meta"></span>
-  </div>
-  <div class="cards" id="energy-cards"></div>
-</section>
-
-<section>
-  <h2>Stromverbrauch pro Tag</h2>
-  <div class="chart-row">
-    <select id="daily-days">
-      <option value="7">letzte 7 Tage</option>
-      <option value="14" selected>letzte 14 Tage</option>
-      <option value="30">letzte 30 Tage</option>
-    </select>
-    <button id="btn-refresh-daily">Aktualisieren</button>
-    <span class="chart-meta" id="daily-meta"></span>
-  </div>
-  <div class="chart-wrap" id="daily-chart"></div>
-  <div class="chart-meta" id="daily-sum"></div>
-</section>
-
-<section>
-  <h2>Einstellungen</h2>
-  <div class="toolbar">
-    <label class="field-label">Batteriekapazität
-      <input type="number" id="cfg-capacity" step="0.1" min="0.1"> kWh
-    </label>
-    <label class="field-label">Warnschwelle Verbrauch
-      <input type="number" id="cfg-threshold" step="10" min="0"> W
-    </label>
-    <label class="field-label">Abfrage-Intervall
-      <input type="number" id="cfg-interval" step="1" min="2" max="600"> s
-    </label>
-    <button id="btn-save-config" class="primary">Speichern</button>
-    <span class="cfg-status" id="cfg-status"></span>
-  </div>
-  <div class="info">Werte werden in <code>config.toml</code> gespeichert und bei jeder Abfrage frisch eingelesen – Änderungen wirken sofort, ohne Neustart. Das Intervall gilt für den Poller des Kern-Services.</div>
-</section>
-
-<section>
-  <details>
-    <summary>Wechselrichter-Settings (<span id="settings-count">0</span>)</summary>
-    <table>
-      <thead><tr><th>ID</th><th>Wert</th></tr></thead>
-      <tbody id="settings-body"></tbody>
-    </table>
-    <div class="chart-meta" id="settings-unsupported"></div>
-  </details>
-</section>
+</div>
 
 <script>
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const isNum = (v) => typeof v === "number" && isFinite(v);
+const num = (v) => (isNum(v) ? v : 0);
+const nf0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
 
-const KIND_LABELS = {
-  PV: "PV / Solar", AC: "AC-Ausgang", UPS: "Backup / Notstrom",
-  BAT: "Batterie", GRID: "Netz / Zähler", BMS: "BMS", OTHER: "Sonstiges"
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ohne Speicher weiterarbeiten */ } }
 };
 
-let state = null;           // letzter /ui-api/state-Snapshot
-let selection = null;       // Set der gewählten Feld-IDs
-const LS_KEY = "goodwe.selected";
-
-function loadSelection() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(LS_KEY) || "null");
-    if (raw && Array.isArray(raw)) { selection = new Set(raw); return; }
-  } catch (e) { /* ignorieren */ }
-  selection = new Set();
-}
-function saveSelection() {
-  localStorage.setItem(LS_KEY, JSON.stringify([...selection]));
-}
-
-function groupOf(f) {
-  return (f.kind && KIND_LABELS[f.kind]) ? f.kind : "OTHER";
-}
-function groupLabel(kind) { return KIND_LABELS[kind] || kind; }
-
-function fmt(value, numeric) {
-  if (value === null || value === undefined) return "–";
-  if (typeof value === "number") {
-    if (numeric) return value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
-  }
-  return String(value);
-}
-
-function fmtDuration(sec) {
-  if (sec === null || sec === undefined || !isFinite(sec)) return "–";
-  const h = Math.floor(sec / 3600);
-  const m = Math.round((sec % 3600) / 60);
-  if (h === 0) return m + " min";
-  return h + " h " + m + " min";
-}
-
-function mkCard(name, val, unit, cid) {
-  return '<div class="card"><div class="cname">' + name + '</div>' +
-    '<div class="cval">' + val + (unit ? '<span class="cunit">' + unit + '</span>' : '') + '</div>' +
-    (cid ? '<div class="cid">' + cid + '</div>' : '') + '</div>';
-}
-
-/* ---------- Batterie & Verbrauch ---------- */
-
-function renderMetrics() {
-  const m = state.metrics || {};
-  const wrap = $("metric-cards");
-  if (Object.keys(m).length === 0) {
-    wrap.innerHTML = '<div class="empty">Noch keine Kennzahlen vorhanden – warte auf den nächsten Poll.</div>';
-    return;
-  }
-  const cap = m.battery_capacity_kwh;
-  const html = [];
-  if (m.battery_soc_percent !== undefined) {
-    html.push(mkCard("Batteriestand", fmt(m.battery_soc_percent, true), "%", "battery_soc"));
-  }
-  if (m.battery_stored_kwh !== undefined) {
-    html.push(mkCard("Geladen", fmt(m.battery_stored_kwh, true) + " von " + fmt(cap, true), "kWh", "Kapazität"));
-  }
-  if (m.battery_charge_power_w !== undefined) {
-    html.push(mkCard("Ladeleistung", "+" + fmt(m.battery_charge_power_w, true), "W", "pbattery1"));
-    html.push(mkCard("Voll in", fmtDuration(m.charge_time_seconds), "", "Ladezeit"));
-  } else if (m.battery_discharge_power_w !== undefined) {
-    html.push(mkCard("Entladeleistung", fmt(m.battery_discharge_power_w, true), "W", "pbattery1"));
-    html.push(mkCard("Leer in", fmtDuration(m.discharge_time_seconds), "", "Entladezeit"));
-  } else if (m.battery_power_w !== undefined) {
-    html.push(mkCard("Batterie-Leistung", fmt(0, true), "W", "pbattery1"));
-  }
-  if (m.house_power_w !== undefined) {
-    html.push(mkCard("Hausverbrauch", fmt(m.house_power_w, true), "W", "house_consumption"));
-  }
-  if (m.grid_import_w !== undefined) {
-    html.push(mkCard("Netzbezug", fmt(m.grid_import_w, true), "W", m.grid_state || "grid"));
-  }
-  if (m.grid_export_w !== undefined && m.grid_export_w > 0) {
-    html.push(mkCard("Einspeisung", fmt(m.grid_export_w, true), "W", m.grid_state || "grid"));
-  }
-  if (m.net_consumption_w !== undefined) {
-    html.push(mkCard("Netto-Verbrauch", fmt(m.net_consumption_w, true), "W", "Haus − PV"));
-  }
-  if (m.autonomy_time_seconds !== undefined) {
-    const val = m.autonomy_covered ? "∞ (PV deckt)" : fmtDuration(m.autonomy_time_seconds);
-    html.push(mkCard("Strom reicht noch", val, "", "Autonomie"));
-  }
-  if (m.warning_threshold_w !== undefined) {
-    html.push(mkCard("Warnschwelle", fmt(m.warning_threshold_w, true), "W", "config.toml"));
-  }
-  wrap.innerHTML = html.join("");
-}
-
-function renderWarning() {
-  const w = state.warning || {};
-  const box = $("warn-box");
-  if (w.active) {
-    box.style.display = "block";
-    let text = "⚡ Hoher Verbrauch: " + fmt(w.current_w, true) +
-      " W überschreitet die Schwelle von " + fmt(w.threshold_w, true) + " W!";
-    if (w.started_at) {
-      text += " (seit " + new Date(w.started_at).toLocaleTimeString("de-DE") + ")";
-    }
-    box.textContent = text;
-  } else {
-    box.style.display = "none";
-  }
-}
-
-/* ---------- Header / Status ---------- */
-
-function renderStatus() {
-  const s = state.status;
-  const online = !!s.online;
-  $("status-dot").className = "dot " + (online ? "on" : "off");
-  $("status-text").textContent = online ? "Online" : "Offline";
-
-  const d = state.device || {};
-  const parts = [];
-  if (d.serial_number) parts.push("Seriennummer: <b>" + d.serial_number + "</b>");
-  if (d.model_name) parts.push("Modell: <b>" + d.model_name + "</b>");
-  if (d.firmware) parts.push("Firmware: <b>" + d.firmware + "</b>");
-  if (d.arm_firmware) parts.push("ARM: <b>" + d.arm_firmware + "</b>");
-  $("device-info").innerHTML = parts.join(" &nbsp;·&nbsp; ") || "Geräte-Info wird geladen …";
-
-  const age = state.last_update
-    ? Math.max(0, (Date.now() - Date.parse(state.last_update)) / 1000)
-    : null;
-  const next = state.last_update
-    ? Math.max(0, Math.round((s.poll_interval || 10) - age))
-    : "–";
-  const last = state.last_update
-    ? new Date(state.last_update).toLocaleTimeString("de-DE")
-    : "noch nie";
-  $("poll-info").innerHTML =
-    "Letzte Abfrage: <b>" + last + "</b> (Alter: " + (age === null ? "–" : Math.round(age) + " s") + ")" +
-    " &nbsp;·&nbsp; nächste in <b>" + next + " s</b>" +
-    " &nbsp;·&nbsp; OK: <b>" + s.success_count + "</b> / Fehler: <b>" + s.fail_count + "</b>";
-
-  const err = s.last_error;
-  if (!online && err) {
-    $("error-box").style.display = "block";
-    $("error-box").textContent = "⚠️ Wechselrichter nicht erreichbar (" + err + ") – automatischer Retry jede Minute.";
-  } else {
-    $("error-box").style.display = "none";
-  }
-}
-
-/* ---------- Auswahl ---------- */
-
-function renderGroups() {
-  const fields = state.fields || [];
-  const byGroup = {};
-  for (const f of fields) {
-    const g = groupOf(f);
-    (byGroup[g] = byGroup[g] || []).push(f);
-  }
-  const order = ["PV", "AC", "UPS", "BAT", "GRID", "BMS", "OTHER"].filter(g => byGroup[g]);
-
-  const groupsEl = $("groups");
-  groupsEl.innerHTML = "";
-  for (const g of order) {
-    const list = byGroup[g];
-    const div = document.createElement("div");
-    div.className = "group";
-    div.dataset.group = g;
-
-    const gbox = document.createElement("input");
-    gbox.type = "checkbox";
-    gbox.id = "grp-" + g;
-    gbox.checked = list.some(f => selection.has(f.id));
-    gbox.addEventListener("change", () => {
-      for (const f of list) {
-        if (gbox.checked) selection.add(f.id); else selection.delete(f.id);
-      }
-      saveSelection(); renderGroups(); renderCards();
-    });
-
-    const label = document.createElement("label");
-    label.htmlFor = gbox.id;
-    label.appendChild(gbox);
-    label.appendChild(document.createTextNode(groupLabel(g)));
-    const cnt = document.createElement("span");
-    cnt.className = "count";
-    cnt.textContent = " (" + list.length + ")";
-    label.appendChild(cnt);
-    div.appendChild(label);
-
-    for (const f of list) {
-      const row = document.createElement("div");
-      row.className = "field";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.id = "fld-" + f.id;
-      cb.checked = selection.has(f.id);
-      cb.addEventListener("change", () => {
-        if (cb.checked) selection.add(f.id); else selection.delete(f.id);
-        saveSelection(); renderGroups(); renderCards();
-      });
-      const l2 = document.createElement("label");
-      l2.htmlFor = cb.id;
-      l2.appendChild(cb);
-      l2.appendChild(document.createTextNode(f.name + " "));
-      const fid = document.createElement("span");
-      fid.className = "fid";
-      fid.textContent = f.id;
-      l2.appendChild(fid);
-      if (f.unit) {
-        const u = document.createElement("span");
-        u.className = "unit";
-        u.textContent = " [" + f.unit + "]";
-        l2.appendChild(u);
-      }
-      row.appendChild(l2);
-      div.appendChild(row);
-    }
-    groupsEl.appendChild(div);
-  }
-}
-
-/* ---------- Karten ---------- */
-
-function renderCards() {
-  const fields = (state.fields || []).filter(f => selection.has(f.id));
-  const stale = state.last_update
-    ? (Date.now() - Date.parse(state.last_update)) / 1000 > 180
-    : false;
-
-  $("cards-meta").textContent = " · " + fields.length + " von " + (state.fields || []).length + " ausgewählt";
-
-  const cards = $("cards");
-  cards.innerHTML = "";
-  if (fields.length === 0) {
-    cards.innerHTML = '<div class="empty">Keine Felder ausgewählt – wähle unten Statistiken aus.</div>';
-    return;
-  }
-  const runtime = state.runtime || {};
-  for (const f of fields) {
-    const v = runtime[f.id];
-    const div = document.createElement("div");
-    div.className = "card" + (stale ? " stale" : "");
-    div.innerHTML =
-      '<div class="cname">' + f.name + '</div>' +
-      '<div class="cval">' + fmt(v, f.numeric) + (f.unit ? '<span class="cunit">' + f.unit + '</span>' : '') + '</div>' +
-      '<div class="cid">' + f.id + '</div>';
-    cards.appendChild(div);
-  }
-}
-
-/* ---------- Settings ---------- */
-
-function renderSettings() {
-  const s = state.settings || {};
-  const keys = Object.keys(s).sort();
-  const unsup = state.unsupported_settings || [];
-  $("settings-count").textContent = keys.length + (unsup.length ? " · " + unsup.length + " abgelehnt" : "");
-  $("settings-unsupported").textContent = unsup.length
-    ? "Von der Firmware abgelehnt (nicht unterstützt): " + unsup.join(", ")
-    : "";
-  const tbody = $("settings-body");
-  tbody.innerHTML = "";
-  for (const k of keys) {
-    const tr = document.createElement("tr");
-    const td1 = document.createElement("td"); td1.className = "id"; td1.textContent = k;
-    const td2 = document.createElement("td"); td2.textContent = fmt(s[k], false);
-    tr.appendChild(td1); tr.appendChild(td2);
-    tbody.appendChild(tr);
-  }
-}
-
-/* ---------- Verlauf / Chart ---------- */
-
-function renderChartSelect() {
-  const sel = $("chart-field");
-  const numeric = (state.fields || []).filter(f => f.numeric);
-  const cur = sel.value;
-  sel.innerHTML = "";
-  for (const f of numeric) {
-    const o = document.createElement("option");
-    o.value = f.id;
-    o.textContent = f.name + " (" + f.id + ")" + (f.unit ? " [" + f.unit + "]" : "");
-    sel.appendChild(o);
-  }
-  if (cur && numeric.some(f => f.id === cur)) sel.value = cur;
-}
-
-async function renderChart() {
-  const fieldId = $("chart-field").value;
-  const minutes = parseInt($("chart-window").value, 10);
-  const wrap = $("chart");
-  const meta = $("chart-meta");
-  if (!fieldId) { wrap.innerHTML = ""; meta.textContent = ""; return; }
-
-  let data;
-  try {
-    data = await mcpCall("get_history", { fields: fieldId, minutes: minutes, max_points: 400 });
-  } catch (e) {
-    meta.textContent = "Fehler beim Laden der Historie: " + e.message;
-    return;
-  }
-
-  const pts = data.points
-    .map(p => ({ t: p.ts, v: p.values[fieldId] }))
-    .filter(p => typeof p.v === "number" && isFinite(p.v));
-  if (pts.length === 0) {
-    wrap.innerHTML = '<div class="empty">Noch keine Daten in der Historie (Polling läuft alle 10 s).</div>';
-    meta.textContent = "";
-    return;
-  }
-
-  const W = 1100, H = 260, padL = 58, padR = 14, padT = 12, padB = 30;
-  let lo = Math.min(...pts.map(p => p.v));
-  let hi = Math.max(...pts.map(p => p.v));
-  if (lo === hi) { lo -= 1; hi += 1; }
-  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
-  const x = (t) => padL + (t - t0) / (t1 - t0) * (W - padL - padR);
-  const y = (v) => padT + (hi - v) / (hi - lo) * (H - padT - padB);
-
-  let path = "";
-  pts.forEach((p, i) => { path += (i ? " L" : "M") + x(p.t).toFixed(1) + " " + y(p.v).toFixed(1); });
-
-  const gridLines = [lo, (lo + hi) / 2, hi].map(v =>
-    '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(v).toFixed(1) +
-    '" y2="' + y(v).toFixed(1) + '" stroke="#2a3542" stroke-dasharray="4 4"/>' +
-    '<text x="' + (padL - 8) + '" y="' + (y(v) + 4).toFixed(1) +
-    '" fill="#8b98a5" font-size="11" text-anchor="end">' + v.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + "</text>"
-  ).join("");
-
-  const tLabels = [t0, (t0 + t1) / 2, t1].map(t =>
-    '<text x="' + x(t).toFixed(1) + '" y="' + (H - 8) +
-    '" fill="#8b98a5" font-size="11" text-anchor="middle">' +
-    new Date(t * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) + "</text>"
-  ).join("");
-
-  wrap.innerHTML =
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="min-width:640px">' +
-    '<rect x="' + padL + '" y="' + padT + '" width="' + (W - padL - padR) + '" height="' + (H - padT - padB) + '" fill="#0f141a"/>' +
-    gridLines +
-    '<path d="' + path + '" fill="none" stroke="#3da9fc" stroke-width="2"/>' +
-    tLabels +
-    "</svg>";
-
-  const f = (state.fields || []).find(x => x.id === fieldId);
-  meta.textContent = pts.length + " Messpunkte · min " + lo.toLocaleString("de-DE") +
-    " · max " + hi.toLocaleString("de-DE") + (f && f.unit ? " " + f.unit : "") +
-    " · aktuell: " + fmt(pts[pts.length - 1].v, true) + (f && f.unit ? " " + f.unit : "");
-}
-
-/* ---------- MCP-Client ---------- */
+/* ---------- MCP-Client und Demo-Daten ---------- */
 
 const MCP_BASE = "{{ mcp_base }}";
+const DEMO = MCP_BASE.slice(0, 2) === "{" + "{";
 let mcpReqId = 0;
 
 async function mcpCall(tool, args) {
@@ -602,317 +526,816 @@ async function mcpCall(tool, args) {
     r = await fetch(MCP_BASE, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: ++mcpReqId,
-        method: "tools/call",
-        params: { name: tool, arguments: args || {} },
-      }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: ++mcpReqId, method: "tools/call", params: { name: tool, arguments: args || {} } }),
     });
   } catch (e) {
     throw new Error("MCP-Server nicht erreichbar. Läuft der Dienst? Start: python main.py");
   }
-  if (!r.ok) {
-    throw new Error("MCP-Server antwortet mit Status " + r.status + " – läuft die aktuelle Version des Dienstes?");
-  }
+  if (!r.ok) throw new Error("MCP-Server antwortet mit Status " + r.status + " – läuft die aktuelle Version des Dienstes?");
   const data = await r.json();
-  if (data.error) {
-    throw new Error("MCP-Fehler: " + (data.error.message || JSON.stringify(data.error)));
-  }
+  if (data.error) throw new Error("MCP-Fehler: " + (data.error.message || JSON.stringify(data.error)));
   const result = data.result || {};
-  if (result.isError) {
-    throw new Error((result.content || []).map(c => c.text || "").join(" ") || "Tool-Fehler");
-  }
-  if (result.structuredContent !== undefined && result.structuredContent !== null) {
-    return result.structuredContent;
-  }
-  const text = (result.content || []).map(c => c.text || "").join("");
-  if (text) {
-    try { return JSON.parse(text); } catch (e) { return text; }
-  }
+  if (result.isError) throw new Error((result.content || []).map((c) => c.text || "").join(" ") || "Tool-Fehler");
+  if (result.structuredContent !== undefined && result.structuredContent !== null) return result.structuredContent;
+  const text = (result.content || []).map((c) => c.text || "").join("");
+  if (text) { try { return JSON.parse(text); } catch (e) { return text; } }
   return result;
 }
 
-/* ---------- PV-Produktion (Ø je Stunde) ---------- */
+const demo = { boost: 0, ok: 0, cfg: { battery_capacity_kwh: 10, warning_threshold_w: 3000, poll_interval_seconds: 10 } };
+const hrs = (ts) => { const d = new Date(ts * 1000); return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; };
+const wob = (ts, k) => Math.sin(ts / (37 + k * 11) + k) * 0.5 + Math.sin(ts / (173 + k * 7) + k * 2) * 0.5;
+const sunAt = (h) => Math.pow(Math.max(0, Math.sin(Math.PI * (h - 7.2) / 10.6)), 1.3);
+function socAt(h) {
+  if (h < 6.5) return 61 - h * (37 / 6.5);
+  if (h < 18) { const t = clamp((h - 7.5) / 8, 0, 1); return 24 + 72 * (3 * t * t - 2 * t * t * t); }
+  return 96 - (h - 18) * 5.83;
+}
+function eDayAt(h) { let s = 0; for (let x = 0; x < h; x += 0.05) s += 5200 * 0.88 * sunAt(x) * 0.05 / 1000; return s; }
+function sim(ts, live) {
+  const h = hrs(ts);
+  const cloud = clamp(0.8 + 0.2 * wob(ts, 1) + 0.08 * wob(ts, 2), 0.45, 1);
+  const ppv = Math.round(5200 * sunAt(h) * cloud);
+  let house = 380 + 90 * wob(ts, 3) + (h > 9.5 && h < 11.2 ? 850 : 0) + (h > 12 && h < 13 ? 1600 : 0) + (h > 17.5 && h < 20 ? 1300 : 0);
+  if (live) house += demo.boost;
+  house = Math.max(180, Math.round(house));
+  const soc = clamp(socAt(h), 8, 100);
+  const net = ppv - house;
+  let charge = 0, disch = 0;
+  if (net > 0 && soc < 99) charge = Math.min(net, 3500);
+  if (net < 0 && soc > 10) disch = Math.min(-net, 3500);
+  const imp = Math.max(0, house - ppv - disch);
+  const exp = Math.max(0, ppv - house - charge);
+  return { ppv, house, soc, charge: Math.round(charge), disch: Math.round(disch), imp: Math.round(imp), exp: Math.round(exp) };
+}
+const DEMO_FIELDS = [
+  ["ppv", "PV-Leistung", "W", "PV"], ["e_day", "Ertrag heute", "kWh", "PV"], ["e_total", "Gesamtertrag", "kWh", "PV"],
+  ["house_consumption", "Hausverbrauch", "W", "AC"], ["active_power", "AC-Leistung", "W", "AC"],
+  ["battery_soc", "Ladezustand", "%", "BAT"], ["pbattery1", "Batterieleistung", "W", "BAT"], ["vbattery1", "Batteriespannung", "V", "BAT"], ["battery_charge_limit", "Ladelimit", "%", "BAT"],
+  ["active_power_total", "Netzleistung (Zähler)", "W", "GRID"], ["vgrid", "Netzspannung", "V", "GRID"], ["fgrid", "Netzfrequenz", "Hz", "GRID"],
+  ["temperature", "Temperatur", "°C", "OTHER"],
+].map((a) => ({ id: a[0], name: a[1], unit: a[2], kind: a[3], numeric: true }));
 
-async function renderPvStats() {
-  const wrap = $("pv-chart");
-  const meta = $("pv-meta");
-  let data;
+function demoState() {
+  const ts = Date.now() / 1000;
+  const s = sim(ts, true);
+  const h = hrs(ts);
+  const cap = demo.cfg.battery_capacity_kwh;
+  const stored = cap * s.soc / 100;
+  const rt = {
+    ppv: s.ppv, house_consumption: s.house, battery_soc: Math.round(s.soc), pbattery1: s.charge > 0 ? s.charge : -s.disch,
+    active_power: Math.min(s.ppv, s.house + s.exp), active_power_total: s.exp > 0 ? s.exp : -s.imp,
+    e_day: +eDayAt(h).toFixed(1), e_total: +(4721.3 + eDayAt(h)).toFixed(1), vbattery1: +(330 + s.soc * 0.7).toFixed(1),
+    battery_charge_limit: 100, vgrid: +(231.4 + wob(ts, 5)).toFixed(1), fgrid: 50.01, temperature: 41.2,
+  };
+  const met = {
+    battery_soc_percent: rt.battery_soc, battery_stored_kwh: +stored.toFixed(2), battery_capacity_kwh: cap,
+    house_power_w: s.house, grid_import_w: s.imp, net_consumption_w: s.house - s.ppv, warning_threshold_w: demo.cfg.warning_threshold_w,
+    grid_state: s.imp > 0 ? "Bezug" : "Einspeisung", battery_power_w: s.charge - s.disch,
+  };
+  if (s.exp > 0) met.grid_export_w = s.exp;
+  if (s.charge > 0) { met.battery_charge_power_w = s.charge; met.charge_time_seconds = (cap - stored) * 1000 / s.charge * 3600; }
+  else if (s.disch > 0) { met.battery_discharge_power_w = s.disch; met.discharge_time_seconds = stored * 1000 / s.disch * 3600; }
+  if (s.ppv >= s.house) { met.autonomy_covered = true; met.autonomy_time_seconds = 0; }
+  else { met.autonomy_covered = false; met.autonomy_time_seconds = stored * 1000 / (s.house - s.ppv) * 3600; }
+  const thr = demo.cfg.warning_threshold_w;
+  demo.ok++;
+  return {
+    fields: DEMO_FIELDS, runtime: rt, metrics: met,
+    warning: { active: s.house > thr, current_w: s.house, threshold_w: thr, started_at: s.house > thr ? new Date(Date.now() - 95000).toISOString() : null },
+    status: { online: true, poll_interval: demo.cfg.poll_interval_seconds, success_count: demo.ok, fail_count: 0, last_error: null },
+    device: { serial_number: "DEMO-0000", model_name: "GW10K-ET (Demo)", firmware: "Demo", arm_firmware: "Demo" },
+    last_update: new Date().toISOString(),
+    settings: { grid_export_limit: 0, battery_discharge_depth: 90, work_mode: 0, backup_supply: 1, fast_charging: 0, time_zone_offset: 2 },
+    unsupported_settings: [],
+  };
+}
+function demoBalance(period) {
+  const h = hrs(Date.now() / 1000);
+  const base = { today: [eDayAt(h), 0.9 + 0.55 * h], yesterday: [19.8, 11.9], week: [96.5, 71.4], month: [412, 308], year: [5230, 3950] }[period] || [10, 8];
+  const p = base[0], c = base[1];
+  const d = Math.min(p * 0.38, c * 0.46), bd = c * 0.2, imp = Math.max(0, c - d - bd), bc = p * 0.22, exp = Math.max(0, p - d - bc);
+  return {
+    from: new Date(Date.now() - 6 * 3600e3).toISOString(), to: new Date().toISOString(), data_completeness: period === "week" ? 0.98 : 1, estimate: false, source: "power_integration",
+    pv: { production_kwh: p, direct_use_kwh: d }, consumption: { total_kwh: c }, grid: { imported_kwh: imp, exported_kwh: exp },
+    battery: { charged_kwh: bc, discharged_kwh: bd },
+    autarky_percent: (d + bd) / c * 100, self_consumption_percent: (d + bc) / p * 100, grid_dependency_percent: imp / c * 100,
+  };
+}
+function demoHistory(a) {
+  const field = String(a.fields), minutes = a.minutes || 60, n = 160, now = Date.now() / 1000, pts = [];
+  for (let i = 0; i < n; i++) {
+    const ts = now - minutes * 60 + (minutes * 60) * i / (n - 1);
+    const s = sim(ts, i === n - 1);
+    const v = { ppv: s.ppv, house_consumption: s.house, battery_soc: s.soc, pbattery1: s.charge > 0 ? s.charge : -s.disch, active_power_total: s.exp > 0 ? s.exp : -s.imp }[field];
+    pts.push({ ts: ts, values: { [field]: v === undefined ? 0 : Math.round(v) } });
+  }
+  return { points: pts };
+}
+function demoCall(tool, a) {
+  switch (tool) {
+    case "get_all": return demoState();
+    case "get_config": return Object.assign({}, demo.cfg);
+    case "update_config": Object.assign(demo.cfg, a); return { ok: true };
+    case "get_energy_balance": return demoBalance(a.period);
+    case "get_history": return demoHistory(a);
+    case "get_pv_stats": {
+      const hours = []; for (let hh = 0; hh < 24; hh++) hours.push({ hour: hh, avg_w: Math.round(3600 * sunAt(hh + 0.5)), samples: 180 + hh });
+      const best = hours.reduce((x, y) => (y.avg_w > x.avg_w ? y : x));
+      return { hours: hours, best_hour: best };
+    }
+    case "get_daily_energy": {
+      const list = [];
+      for (let i = a.days - 1; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 864e5), k = a.days - i;
+        const prod = i === 0 ? eDayAt(hrs(Date.now() / 1000)) : 8 + 16 * Math.abs(Math.sin(k * 1.7)) , cons = i === 0 ? 0.9 + 0.55 * hrs(Date.now() / 1000) : 9 + 4 * Math.abs(Math.sin(k * 2.3 + 1));
+        list.push({ date: d.toISOString().slice(0, 10), consumption_kwh: cons, production_kwh: prod, complete: i !== 0 && k !== 3 });
+      }
+      return { days: list };
+    }
+    default: throw new Error("Demo kennt " + tool + " nicht");
+  }
+}
+async function api(tool, args) {
+  if (!DEMO) return mcpCall(tool, args);
+  await new Promise((r) => setTimeout(r, 40));
+  return JSON.parse(JSON.stringify(demoCall(tool, args || {})));
+}
+
+/* ---------- Zustand und Einstellungen ---------- */
+
+const KIND_LABELS = { PV: "PV / Solar", AC: "AC-Ausgang", UPS: "Backup / Notstrom", BAT: "Batterie", GRID: "Netz / Zähler", BMS: "BMS", OTHER: "Sonstiges" };
+const SLOT_DEFAULT = ["house", "pv", "battery_soc", "grid", "autarky"];
+const PREF = {
+  slots: store.get("goodwe.slots", null),
+  tab: store.get("goodwe.tab", "overview"),
+  alarmOn: store.get("goodwe.alarmOn", true),
+  sound: store.get("goodwe.sound", false),
+  pvMax: store.get("goodwe.pvMax", 6000),
+};
+let state = null;
+let cfg = null;
+let selection = new Set(store.get("goodwe.selected", []));
+let balToday = null;
+let balView = null;
+let balPeriod = "today";
+let chartWin = 60;
+let dailyDays = 14;
+
+const thresholdW = () => (cfg && isNum(cfg.warning_threshold_w) ? cfg.warning_threshold_w : (state && state.metrics && isNum(state.metrics.warning_threshold_w) ? state.metrics.warning_threshold_w : 3000));
+const M = () => (state && state.metrics) || {};
+const RT = () => (state && state.runtime) || {};
+const houseW = () => { const v = M().house_power_w; return isNum(v) ? v : (isNum(RT().house_consumption) ? RT().house_consumption : null); };
+
+function fmtDuration(sec) {
+  if (!isNum(sec)) return "–";
+  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+  return h === 0 ? m + " min" : h + " h " + m + " min";
+}
+function fmt(value, numeric) {
+  if (value === null || value === undefined) return "–";
+  if (typeof value === "number" && numeric) return value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  return String(value);
+}
+
+/* ---------- Katalog der Ringe ---------- */
+
+const TONE = { pv: "var(--c-pv)", house: "var(--c-house)", grid: "var(--c-grid)", bat: "var(--c-bat)", aux: "var(--c-aux)" };
+function ring(v, o) {
+  const ok = isNum(v);
+  return Object.assign({ v: ok ? v : null, text: ok ? (o.dec ? nf1.format(v) : nf0.format(v)) : "–", unit: o.unit || "", frac: ok ? Math.abs(v) / o.max : 0, tone: o.tone, sub: o.sub || "", alert: false, tick: null }, o.extra || {});
+}
+const CATALOG = {
+  house: { label: "Hausverbrauch", kind: "house", data() {
+    const v = houseW(), thr = thresholdW(), max = Math.max(thr * 1.25, 1000), over = PREF.alarmOn && isNum(v) && v > thr;
+    return ring(v, { unit: "W", max: max, tone: "house", sub: over ? "Über der Schwelle" : "Schwelle " + nf0.format(thr) + " W", extra: { alert: over, tick: PREF.alarmOn ? thr / max : null } });
+  } },
+  pv: { label: "PV-Leistung", kind: "pv", data() {
+    const rt = RT(); return ring(rt.ppv, { unit: "W", max: PREF.pvMax, tone: "pv", sub: isNum(rt.e_day) ? "Heute " + nf1.format(rt.e_day) + " kWh" : "" });
+  } },
+  battery_soc: { label: "Batterie", kind: "bat", data() {
+    const m = M(); let sub = "Ruhe";
+    if (num(m.battery_charge_power_w) > 0) sub = "lädt mit " + nf0.format(m.battery_charge_power_w) + " W";
+    else if (num(m.battery_discharge_power_w) > 0) sub = "entlädt mit " + nf0.format(m.battery_discharge_power_w) + " W";
+    return ring(m.battery_soc_percent, { unit: "%", max: 100, tone: "bat", sub: sub });
+  } },
+  battery_power: { label: "Batterie-Leistung", kind: "bat", data() {
+    const m = M(), c = num(m.battery_charge_power_w), d = num(m.battery_discharge_power_w);
+    return ring(isNum(m.battery_soc_percent) ? c - d : null, { unit: "W", max: 5000, tone: "bat", sub: c > 0 ? "Laden" : (d > 0 ? "Entladen" : "Ruhe") });
+  } },
+  grid: { label: "Netz", kind: "grid", data() {
+    const m = M(), imp = num(m.grid_import_w), exp = num(m.grid_export_w), has = isNum(m.grid_import_w) || isNum(m.grid_export_w);
+    return ring(has ? (imp > 0 ? imp : exp) : null, { unit: "W", max: 6000, tone: imp > 0 ? "grid" : "aux", sub: imp > 0 ? "Bezug aus dem Netz" : (exp > 0 ? "Einspeisung" : "Kein Austausch") });
+  } },
+  net: { label: "Netto-Verbrauch", kind: "house", data() {
+    const m = M(); const v = m.net_consumption_w;
+    return ring(v, { unit: "W", max: Math.max(thresholdW(), 1000), tone: "house", sub: isNum(v) && v < 0 ? "PV liefert Überschuss" : "Haus minus PV" });
+  } },
+  autarky: { label: "Autarkie heute", kind: "stats", data() {
+    return ring(balToday && balToday.autarky_percent, { unit: "%", max: 100, tone: "bat", sub: "ohne Netzstrom gedeckt" });
+  } },
+  self_use: { label: "Eigenverbrauch heute", kind: "stats", data() {
+    return ring(balToday && balToday.self_consumption_percent, { unit: "%", max: 100, tone: "pv", sub: "des PV-Stroms genutzt" });
+  } },
+  yield: { label: "PV-Ertrag heute", kind: "pv", data() {
+    return ring(RT().e_day, { unit: "kWh", dec: true, max: 30, tone: "pv", sub: "seit Sonnenaufgang" });
+  } },
+  autonomy: { label: "Strom reicht noch", kind: "bat", data() {
+    const m = M();
+    if (m.autonomy_covered) return Object.assign(ring(1, { unit: "", max: 1, tone: "bat", sub: "PV deckt den Verbrauch" }), { text: "∞", frac: 1 });
+    const h = isNum(m.autonomy_time_seconds) ? m.autonomy_time_seconds / 3600 : null;
+    return ring(h, { unit: "h", dec: true, max: 24, tone: "bat", sub: "aus der Batterie" });
+  } },
+};
+function validSlots(arr) {
+  if (!Array.isArray(arr) || arr.length !== 5) return null;
+  return arr.every((k) => CATALOG[k]) ? arr : null;
+}
+PREF.slots = validSlots(PREF.slots) || SLOT_DEFAULT.slice();
+
+/* ---------- Ringe zeichnen ---------- */
+
+const RR = 50, RC = 2 * Math.PI * RR;
+function tickMarkup(t) {
+  if (t === null || t === undefined || !(t > 0 && t <= 1)) return "";
+  const a = (t * 360 - 90) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  return '<line class="ring-tick" x1="' + (60 + (RR - 9) * c).toFixed(1) + '" y1="' + (60 + (RR - 9) * s).toFixed(1) + '" x2="' + (60 + (RR + 9) * c).toFixed(1) + '" y2="' + (60 + (RR + 9) * s).toFixed(1) + '"/>';
+}
+function ringMarkup(d, empty) {
+  const f = empty ? 0 : clamp(d.frac, 0, 1);
+  return '<div class="ring-wrap"><svg class="ring" viewBox="0 0 120 120" aria-hidden="true">' +
+    '<circle class="ring-track" cx="60" cy="60" r="' + RR + '"/>' +
+    '<circle class="ring-arc" cx="60" cy="60" r="' + RR + '" transform="rotate(-90 60 60)" style="stroke:' + (d.alert ? "var(--bad)" : TONE[d.tone]) + ';stroke-dasharray:' + RC.toFixed(2) + ';stroke-dashoffset:' + (RC * (1 - f)).toFixed(2) + '"/>' +
+    '<g class="tick-g">' + tickMarkup(d.tick) + '</g></svg>' +
+    '<div class="ring-center"><span class="ring-val">' + esc(d.text) + '</span>' + (d.unit ? '<span class="ring-unit">' + esc(d.unit) + '</span>' : '') + '</div></div>';
+}
+const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+let ringSig = "";
+function renderRings() {
+  const host = $("rings");
+  if (!state) return;
+  const sig = PREF.slots.join("|");
+  if (sig !== ringSig) {
+    ringSig = sig;
+    host.innerHTML = PREF.slots.map((id, i) => {
+      const d = CATALOG[id].data();
+      return '<button class="ring-card" type="button" data-slot="' + i + '" data-id="' + id + '" aria-label="' + esc(CATALOG[id].label) + ' Details öffnen">' +
+        '<span class="ring-label">' + esc(CATALOG[id].label) + '</span>' + ringMarkup(d, true) +
+        '<span class="ring-sub"></span><span class="ring-more">Details' + CHEV + '</span></button>';
+    }).join("");
+    requestAnimationFrame(() => requestAnimationFrame(updateRings));
+  }
+  updateRings();
+}
+function updateRings() {
+  if (!state) return;
+  for (const card of $("rings").querySelectorAll(".ring-card")) {
+    const d = CATALOG[card.dataset.id].data();
+    card.classList.toggle("alert", !!d.alert);
+    card.querySelector(".ring-val").textContent = d.text;
+    const u = card.querySelector(".ring-unit"); if (u) u.textContent = d.unit;
+    card.querySelector(".ring-sub").textContent = d.sub;
+    const arc = card.querySelector(".ring-arc");
+    arc.style.strokeDashoffset = (RC * (1 - clamp(d.frac, 0, 1))).toFixed(2);
+    arc.style.stroke = d.alert ? "var(--bad)" : TONE[d.tone];
+    card.querySelector(".tick-g").innerHTML = tickMarkup(d.tick);
+  }
+}
+
+/* ---------- Kopfzeile, Warnung ---------- */
+
+let prevWarn = false;
+function renderStatus() {
+  if (!state) return;
+  const s = state.status, online = !!s.online;
+  $("status-dot").className = "dot" + (online ? " on" : "");
+  $("status-text").textContent = online ? "Online" : "Offline";
+  const age = state.last_update ? Math.max(0, (Date.now() - Date.parse(state.last_update)) / 1000) : null;
+  const next = state.last_update ? Math.max(0, Math.round((s.poll_interval || 10) - age)) : "–";
+  const last = state.last_update ? new Date(state.last_update).toLocaleTimeString("de-DE") : "noch nie";
+  $("poll-info").innerHTML = "Abfrage <b>" + last + "</b> · nächste in <b>" + next + " s</b> · OK <b>" + s.success_count + "</b> / Fehler <b>" + s.fail_count + "</b>";
+  const eb = $("error-box");
+  if (!online && s.last_error) {
+    eb.hidden = false;
+    eb.textContent = "Wechselrichter nicht erreichbar (" + s.last_error + "). Automatischer Neuversuch jede Minute.";
+  } else eb.hidden = true;
+}
+const BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+function renderWarning() {
+  if (!state) return;
+  const w = state.warning || {}, box = $("warn-box"), v = houseW(), thr = thresholdW();
+  const active = PREF.alarmOn && (w.active || (isNum(v) && v > thr));
+  if (active) {
+    let t = "Hoher Verbrauch: " + nf0.format(isNum(v) ? v : num(w.current_w)) + " W liegen über der Schwelle von " + nf0.format(thr) + " W.";
+    if (w.started_at) t += " Seit " + new Date(w.started_at).toLocaleTimeString("de-DE") + ".";
+    box.innerHTML = BELL + "<span></span>";
+    box.lastChild.textContent = t;
+    box.hidden = false;
+  } else box.hidden = true;
+  if (active && !prevWarn && PREF.sound) beep();
+  prevWarn = active;
+  const hot = active;
+  $("alarm-status").classList.toggle("hot", hot);
+  $("alarm-title").textContent = !PREF.alarmOn ? "Alarm ausgeschaltet" : (hot ? "Alarm ausgelöst" : "Alles im grünen Bereich");
+  $("alarm-text").textContent = !PREF.alarmOn
+    ? "Der Verbrauch wird nicht überwacht."
+    : "Aktuell " + (isNum(v) ? nf0.format(v) : "–") + " W bei einer Schwelle von " + nf0.format(thr) + " W.";
+}
+let audioCtx = null;
+function beep() {
   try {
-    data = await mcpCall("get_pv_stats");
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    [0, 0.32].forEach((off) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime + off;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+      o.start(t); o.stop(t + 0.3);
+    });
+  } catch (e) { /* Ton nicht verfügbar */ }
+}
+
+/* ---------- Alarm-Einstellungen ---------- */
+
+let saveTimer = null;
+function syncAlarmControls(fromUser) {
+  const thr = thresholdW();
+  if (document.activeElement !== $("al-num")) $("al-num").value = thr;
+  $("al-range").value = clamp(thr, 500, 10000);
+  $("al-switch").setAttribute("aria-checked", String(PREF.alarmOn));
+  $("al-sound").setAttribute("aria-checked", String(PREF.sound));
+  for (const b of $("al-chips").children) b.setAttribute("aria-pressed", String(Number(b.dataset.v) === thr));
+}
+function setThreshold(v) {
+  v = Math.round(clamp(v, 100, 15000));
+  if (!cfg) cfg = { battery_capacity_kwh: 10, poll_interval_seconds: 10 };
+  cfg.warning_threshold_w = v;
+  syncAlarmControls(true);
+  renderWarning(); renderRings(); if (sheet) renderSheet();
+  const note = $("al-note"); note.className = "save-note"; note.textContent = "Wird gespeichert …";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveConfig, 500);
+}
+async function saveConfig(silentStatus) {
+  const note = $("al-note");
+  try {
+    const result = await api("update_config", { battery_capacity_kwh: cfg.battery_capacity_kwh, warning_threshold_w: cfg.warning_threshold_w, poll_interval_seconds: cfg.poll_interval_seconds });
+    if (result && result.ok === false) throw new Error(result.error || "unbekannt");
+    note.className = "save-note ok"; note.textContent = "Gespeichert, gilt ab dem nächsten Poll.";
+    return true;
   } catch (e) {
-    meta.textContent = "Fehler beim Laden der PV-Statistik: " + e.message;
-    return;
+    note.className = "save-note bad"; note.textContent = "Speichern fehlgeschlagen: " + e.message;
+    return false;
   }
-  const hours = data.hours || [];
-  if (hours.length === 0) {
-    wrap.innerHTML = '<div class="empty">Noch keine PV-Statistik – wird mit jedem Poll aufgebaut.</div>';
-    meta.textContent = "";
-    return;
-  }
-  const W = 1100, H = 220, padL = 58, padR = 14, padT = 12, padB = 26;
-  const maxAvg = Math.max(...hours.map(h => h.avg_w), 1);
-  const bw = (W - padL - padR) / 24;
-  const y = (v) => padT + (maxAvg - v) / maxAvg * (H - padT - padB);
+}
+function initAlarm() {
+  $("al-chips").innerHTML = [1500, 2500, 3500, 5000].map((v) => '<button class="chip" type="button" data-v="' + v + '" aria-pressed="false">' + nf0.format(v) + ' W</button>').join("");
+  $("al-chips").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) setThreshold(Number(b.dataset.v)); });
+  $("al-range").addEventListener("input", (e) => { $("al-num").value = e.target.value; });
+  $("al-range").addEventListener("change", (e) => setThreshold(Number(e.target.value)));
+  $("al-num").addEventListener("change", (e) => { const v = Number(e.target.value); if (isFinite(v) && v > 0) setThreshold(v); });
+  $("al-switch").addEventListener("click", () => { PREF.alarmOn = !PREF.alarmOn; store.set("goodwe.alarmOn", PREF.alarmOn); syncAlarmControls(); renderWarning(); renderRings(); });
+  $("al-sound").addEventListener("click", () => { PREF.sound = !PREF.sound; store.set("goodwe.sound", PREF.sound); syncAlarmControls(); if (PREF.sound) beep(); });
+}
 
-  let bars = "";
-  for (const h of hours) {
-    const bh = Math.max(0, (H - padT - padB) * (h.avg_w / maxAvg));
-    const best = data.best_hour && h.hour === data.best_hour.hour;
-    bars +=
-      '<rect x="' + (padL + h.hour * bw + bw * 0.15).toFixed(1) +
-      '" y="' + (padT + (H - padT - padB) - bh).toFixed(1) +
-      '" width="' + (bw * 0.7).toFixed(1) + '" height="' + Math.max(bh, 0.5).toFixed(1) +
-      '" fill="' + (best ? "#2ecc71" : "#3da9fc") + '" opacity="0.85">' +
-      '<title>' + h.hour + ' Uhr: Ø ' + fmt(h.avg_w, true) + ' W (' + h.samples + ' Messungen)</title></rect>';
-  }
-  const labels = [0, 6, 12, 18, 23].map(hh =>
-    '<text x="' + (padL + hh * bw + bw / 2).toFixed(1) + '" y="' + (H - 6) +
-    '" fill="#8b98a5" font-size="11" text-anchor="middle">' + hh + ' Uhr</text>'
-  ).join("");
-  const grid = [0.25, 0.5, 0.75, 1].map(f =>
-    '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(maxAvg * f).toFixed(1) +
-    '" y2="' + y(maxAvg * f).toFixed(1) + '" stroke="#2a3542" stroke-dasharray="4 4"/>' +
-    '<text x="' + (padL - 8) + '" y="' + (y(maxAvg * f) + 4).toFixed(1) +
-    '" fill="#8b98a5" font-size="11" text-anchor="end">' + (maxAvg * f).toLocaleString("de-DE", { maximumFractionDigits: 0 }) + '</text>'
-  ).join("");
+/* ---------- Ströme und Aufteilungen ---------- */
 
-  wrap.innerHTML =
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="min-width:640px">' +
-    '<rect x="' + padL + '" y="' + padT + '" width="' + (W - padL - padR) + '" height="' + (H - padT - padB) + '" fill="#0f141a"/>' +
-    grid + bars + labels + '</svg>';
+function flows() {
+  const m = M(), rt = RT();
+  const ppv = num(rt.ppv), house = num(houseW()), charge = num(m.battery_charge_power_w), disch = num(m.battery_discharge_power_w), imp = num(m.grid_import_w), exp = num(m.grid_export_w);
+  const pvToHouse = clamp(ppv - charge - exp, 0, house);
+  const pvToBat = clamp(ppv - pvToHouse - exp, 0, charge);
+  return { ppv, house, charge, disch, imp, exp, pvToHouse, pvToBat, batToHouse: Math.min(disch, house), gridToHouse: imp };
+}
+function segMarkup(items, unit, dec) {
+  const total = items.reduce((a, i) => a + Math.max(0, i.value), 0);
+  if (total <= 0) return '<div class="empty">Gerade kein Fluss.</div>';
+  const f = (v) => (dec ? nf2.format(v) : nf0.format(v));
+  return '<div class="stack" role="img" aria-label="' + esc(items.map((i) => i.name + " " + Math.round(i.value / total * 100) + " Prozent").join(", ")) + '">' +
+    items.filter((i) => i.value > 0).map((i) => '<i style="width:' + (i.value / total * 100).toFixed(2) + '%;background:' + TONE[i.tone] + '"></i>').join("") + '</div>' +
+    '<div class="legend">' + items.map((i) => '<div class="row"><span class="sw" style="background:' + TONE[i.tone] + '"></span><span>' + esc(i.name) + '</span><span class="v num">' + f(i.value) + " " + unit + '</span><span class="p num">' + Math.round(Math.max(0, i.value) / total * 100) + ' %</span></div>').join("") + '</div>';
+}
 
-  if (data.best_hour) {
-    meta.textContent = "Beste Zeit: " + data.best_hour.hour + " Uhr mit Ø " +
-      fmt(data.best_hour.avg_w, true) + " W (" + data.best_hour.samples + " Messungen) – " +
-      "Ø über alle erfassten Tage.";
+/* ---------- Diagramme ---------- */
+
+function lineChart(pts, o) {
+  const W = Math.max(280, Math.round(o.width || 600)), H = o.height || 190, pl = 46, pr = 10, pt = 10, pb = 24;
+  const vals = pts.map((p) => p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (o.threshold !== undefined && o.threshold !== null) hi = Math.max(hi, o.threshold);
+  if (o.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const span = hi - lo; hi += span * 0.06; if (!o.zero && lo > 0) lo = Math.max(0, lo - span * 0.06); else lo -= o.zero ? span * 0.06 : 0;
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t > t0 ? pts[pts.length - 1].t : t0 + 1;
+  const x = (t) => pl + (t - t0) / (t1 - t0) * (W - pl - pr);
+  const y = (v) => pt + (hi - v) / (hi - lo) * (H - pt - pb);
+  let d = ""; pts.forEach((p, i) => { d += (i ? "L" : "M") + x(p.t).toFixed(1) + " " + y(p.v).toFixed(1); });
+  const area = d + "L" + x(pts[pts.length - 1].t).toFixed(1) + " " + (H - pb) + "L" + x(pts[0].t).toFixed(1) + " " + (H - pb) + "Z";
+  const ticks = [0, 0.5, 1].map((f) => lo + (hi - lo) * f);
+  const grid = ticks.map((v) => '<line class="g" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(v).toFixed(1) + '" y2="' + y(v).toFixed(1) + '"/><text class="t" x="' + (pl - 7) + '" y="' + (y(v) + 4).toFixed(1) + '" text-anchor="end">' + v.toLocaleString("de-DE", { maximumFractionDigits: Math.abs(hi - lo) < 10 ? 1 : 0 }) + '</text>').join("");
+  const tl = [t0, (t0 + t1) / 2, t1].map((t, i) => '<text class="t" x="' + x(t).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + (i === 0 ? "start" : (i === 2 ? "end" : "middle")) + '">' + new Date(t * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) + '</text>').join("");
+  const thr = (o.threshold !== undefined && o.threshold !== null) ? '<line class="thr-line" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(o.threshold).toFixed(1) + '" y2="' + y(o.threshold).toFixed(1) + '"/>' : "";
+  const last = pts[pts.length - 1];
+  const gid = "g" + o.gid;
+  return '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(o.label || "Verlauf") + '"><defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:' + o.color + ';stop-opacity:.32"/><stop offset="1" style="stop-color:' + o.color + ';stop-opacity:0"/></linearGradient></defs>' +
+    grid + thr + '<path d="' + area + '" style="fill:url(#' + gid + ')"/><path d="' + d + '" style="fill:none;stroke:' + o.color + ';stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round"/>' +
+    '<circle cx="' + x(last.t).toFixed(1) + '" cy="' + y(last.v).toFixed(1) + '" r="4.5" style="fill:' + o.color + ';stroke:var(--surface);stroke-width:2"/>' + tl + '</svg>';
+}
+async function loadSeries(fieldId, minutes) {
+  const data = await api("get_history", { fields: fieldId, minutes: minutes, max_points: 400 });
+  return (data.points || []).map((p) => ({ t: p.ts, v: p.values[fieldId] })).filter((p) => isNum(p.v));
+}
+const WINDOWS = [[60, "1 h"], [360, "6 h"], [1440, "24 h"]];
+function segMarkupBtns(list, cur, attr) {
+  return list.map((o) => '<button type="button" ' + attr + '="' + o[0] + '" aria-pressed="' + (String(o[0]) === String(cur)) + '">' + esc(o[1]) + '</button>').join("");
+}
+
+/* ---------- Detailansicht ---------- */
+
+let sheet = null;
+let lastFocus = null;
+const PERIODS = [["today", "Heute"], ["yesterday", "Gestern"], ["week", "Woche"], ["month", "Monat"], ["year", "Jahr"]];
+function histField(kind, id) {
+  const has = (f) => state && (state.fields || []).some((x) => x.id === f);
+  if (kind === "house") return "house_consumption";
+  if (kind === "pv") return "ppv";
+  if (kind === "bat") return id === "battery_power" ? "pbattery1" : "battery_soc";
+  if (kind === "grid") return ["active_power_total", "meter_active_power_total", "active_power"].find(has) || null;
+  return null;
+}
+const HIST_META = {
+  house: { label: "Hausverbrauch (W)", color: "var(--c-house)" }, pv: { label: "PV-Leistung (W)", color: "var(--c-pv)" },
+  bat: { label: "Batterie", color: "var(--c-bat)" }, grid: { label: "Netzleistung am Zähler (W)", color: "var(--c-grid)" },
+};
+function openSheet(id, opener) {
+  lastFocus = opener || null;
+  sheet = { id: id, kind: CATALOG[id].kind, period: "today", win: 60, bal: null, series: undefined, seq: 0 };
+  $("sheet-overlay").hidden = false;
+  document.body.style.overflow = "hidden";
+  renderSheet();
+  $("sheet").focus();
+  loadSheetData(true, true);
+}
+function closeSheet() {
+  sheet = null;
+  $("sheet-overlay").hidden = true;
+  document.body.style.overflow = "";
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+}
+async function loadSheetData(wantBal, wantSeries) {
+  if (!sheet) return;
+  const s = sheet, seq = ++s.seq;
+  const tasks = [];
+  if (wantBal && s.kind !== "pv-none") tasks.push(api("get_energy_balance", { period: s.period }).then((b) => { if (sheet === s && !b.error) s.bal = b; }).catch(() => { if (sheet === s) s.bal = null; }));
+  const field = histField(s.kind, s.id);
+  if (wantSeries && field) tasks.push(loadSeries(field, s.win).then((p) => { if (sheet === s) s.series = p; }).catch(() => { if (sheet === s) s.series = null; }));
+  await Promise.all(tasks);
+  if (sheet === s && seq === s.seq) renderSheet();
+}
+function statRows(rows) {
+  return '<div class="tiles">' + rows.map((r) => '<div class="tile"><div class="k">' + esc(r[0]) + '</div><div class="n">' + esc(r[1]) + (r[2] ? "<small>" + esc(r[2]) + "</small>" : "") + "</div></div>").join("") + "</div>";
+}
+function renderSheet() {
+  if (!sheet || !state) return;
+  const id = sheet.id, kind = sheet.kind, d = CATALOG[id].data(), f = flows(), b = sheet.bal, m = M();
+  const k1 = (v) => nf1.format(v);
+  let now = "", today = "", extra = "";
+  if (kind === "house") {
+    now = '<div class="sub-h">Woher der Strom jetzt kommt<small>' + nf0.format(f.house) + ' W gesamt</small></div>' + segMarkup([
+      { name: "Solaranlage direkt", tone: "pv", value: f.pvToHouse }, { name: "Batterie", tone: "bat", value: f.batToHouse }, { name: "Netz", tone: "grid", value: f.gridToHouse }], "W", false);
+    if (b) today = '<div class="sub-h">Verbrauch in kWh<small>' + k1(b.consumption.total_kwh) + ' kWh gesamt</small></div>' + segMarkup([
+      { name: "Solaranlage direkt", tone: "pv", value: b.pv.direct_use_kwh }, { name: "Batterie", tone: "bat", value: b.battery.discharged_kwh }, { name: "Netz", tone: "grid", value: b.grid.imported_kwh }], "kWh", true);
+    extra = '<div class="sh-tools"><span class="hint" style="color:var(--ink3);font-size:12.5px">Alarm bei über ' + nf0.format(thresholdW()) + ' W ' + (PREF.alarmOn ? "ist aktiv" : "ist ausgeschaltet") + '</span><button class="btn" type="button" data-act="alarm">Alarm einstellen</button></div>';
+  } else if (kind === "pv") {
+    now = '<div class="sub-h">Wohin der Solarstrom geht<small>' + nf0.format(f.ppv) + ' W Erzeugung</small></div>' + segMarkup([
+      { name: "Haus direkt", tone: "house", value: f.pvToHouse }, { name: "Batterie laden", tone: "bat", value: f.pvToBat }, { name: "Einspeisung", tone: "aux", value: f.exp }], "W", false);
+    if (b) today = '<div class="sub-h">Erzeugung in kWh<small>' + k1(b.pv.production_kwh) + ' kWh gesamt</small></div>' + segMarkup([
+      { name: "Haus direkt", tone: "house", value: b.pv.direct_use_kwh }, { name: "Batterie geladen", tone: "bat", value: b.battery.charged_kwh }, { name: "Eingespeist", tone: "aux", value: b.grid.exported_kwh }], "kWh", true);
+  } else if (kind === "bat") {
+    const cap = m.battery_capacity_kwh;
+    const rows = [["Ladestand", isNum(m.battery_soc_percent) ? nf0.format(m.battery_soc_percent) : "–", "%"], ["Gespeichert", isNum(m.battery_stored_kwh) ? nf1.format(m.battery_stored_kwh) + " von " + nf1.format(num(cap)) : "–", "kWh"]];
+    if (num(m.battery_charge_power_w) > 0) { rows.push(["Ladeleistung", "+" + nf0.format(m.battery_charge_power_w), "W"], ["Voll in", fmtDuration(m.charge_time_seconds), ""]); }
+    else if (num(m.battery_discharge_power_w) > 0) { rows.push(["Entladeleistung", nf0.format(m.battery_discharge_power_w), "W"], ["Leer in", fmtDuration(m.discharge_time_seconds), ""]); }
+    else rows.push(["Leistung", "0", "W"]);
+    if (isNum(m.autonomy_time_seconds)) rows.push(["Strom reicht noch", m.autonomy_covered ? "∞ (PV deckt)" : fmtDuration(m.autonomy_time_seconds), ""]);
+    now = '<div class="sub-h">Jetzt</div>' + statRows(rows);
+    if (b) today = '<div class="sub-h">Batterie in kWh</div>' + segMarkup([{ name: "Geladen", tone: "bat", value: b.battery.charged_kwh }, { name: "Entladen", tone: "house", value: b.battery.discharged_kwh }], "kWh", true);
+  } else if (kind === "grid") {
+    now = '<div class="sub-h">Jetzt</div>' + segMarkup([{ name: "Bezug aus dem Netz", tone: "grid", value: f.imp }, { name: "Einspeisung", tone: "aux", value: f.exp }], "W", false);
+    if (b) today = '<div class="sub-h">Netz in kWh</div>' + segMarkup([{ name: "Bezug", tone: "grid", value: b.grid.imported_kwh }, { name: "Einspeisung", tone: "aux", value: b.grid.exported_kwh }], "kWh", true);
   } else {
-    meta.textContent = "";
+    if (b) {
+      now = '<div class="sub-h">Kennzahlen</div>' + statRows([["Autarkie", nf0.format(b.autarky_percent), "%"], ["Eigenverbrauch", nf0.format(b.self_consumption_percent), "%"], ["Netzabhängigkeit", nf0.format(b.grid_dependency_percent), "%"]]);
+      today = '<div class="sub-h">Verbrauch gedeckt durch<small>' + k1(b.consumption.total_kwh) + ' kWh gesamt</small></div>' + segMarkup([
+        { name: "Solaranlage direkt", tone: "pv", value: b.pv.direct_use_kwh }, { name: "Batterie", tone: "bat", value: b.battery.discharged_kwh }, { name: "Netz", tone: "grid", value: b.grid.imported_kwh }], "kWh", true);
+    }
   }
+  const showPeriod = !!today || kind === "stats";
+  let hist = "";
+  const field = histField(kind, id);
+  if (field) {
+    const hm = HIST_META[kind];
+    let body;
+    if (sheet.series === undefined) body = '<div class="empty">Verlauf wird geladen …</div>';
+    else if (!sheet.series || sheet.series.length < 2) body = '<div class="empty">Noch keine Verlaufsdaten für dieses Fenster.</div>';
+    else {
+      const w = $("sheet-body").clientWidth || 600;
+      body = lineChart(sheet.series, { width: w, color: hm.color, gid: "s" + id, label: hm.label, threshold: kind === "house" && PREF.alarmOn ? thresholdW() : null, zero: id === "battery_power" });
+    }
+    hist = '<div><div class="sub-h">Verlauf<small>' + esc(hm.label) + '</small></div><div class="sh-tools" style="margin-bottom:8px"><div class="seg" role="group" aria-label="Zeitfenster">' + segMarkupBtns(WINDOWS, sheet.win, "data-win") + '</div></div><div class="chart-box">' + body + "</div></div>";
+  }
+  $("sheet-body").innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px"><div class="sh-head" style="flex:1;min-width:0">' + ringMarkup(d, false) +
+    '<div class="tt"><div class="ring-label" id="sheet-title">' + esc(CATALOG[id].label) + '</div><h2 class="num">' + esc(d.text) + (d.unit ? "<small>" + esc(d.unit) + "</small>" : "") + '</h2><p>' + esc(d.sub) + '</p></div></div>' +
+    '<button class="btn icon" type="button" data-act="close" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+    '<div style="display:flex;flex-direction:column;gap:20px">' +
+    (now ? "<div>" + now + "</div>" : "") +
+    (showPeriod ? '<div><div class="sh-tools" style="margin-bottom:8px"><span class="sub-h" style="margin:0">Zeitraum</span><div class="seg" role="group" aria-label="Zeitraum">' + segMarkupBtns(PERIODS, sheet.period, "data-period") + "</div></div>" + (today || (b ? "" : '<div class="empty">Bilanz wird geladen …</div>')) + "</div>" : "") +
+    hist + extra + "</div>";
+}
+function initSheet() {
+  $("rings").addEventListener("click", (e) => { const c = e.target.closest(".ring-card"); if (c) openSheet(c.dataset.id, c); });
+  $("sheet-overlay").addEventListener("click", (e) => { if (e.target === $("sheet-overlay")) closeSheet(); });
+  $("sheet-body").addEventListener("click", (e) => {
+    const t = e.target.closest("button"); if (!t || !sheet) return;
+    if (t.dataset.act === "close") closeSheet();
+    else if (t.dataset.act === "alarm") { closeSheet(); setTab("overview"); $("alarm-card").scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => $("al-num").focus(), 350); }
+    else if (t.dataset.period) { sheet.period = t.dataset.period; sheet.bal = null; renderSheet(); loadSheetData(true, false); }
+    else if (t.dataset.win) { sheet.win = Number(t.dataset.win); sheet.series = undefined; renderSheet(); loadSheetData(false, true); }
+  });
+  setInterval(() => { if (sheet) loadSheetData(true, true); }, 30000);
+}
+
+/* ---------- Werte wählen ---------- */
+
+function openPick(opener) {
+  lastFocus = opener;
+  $("pick-list").innerHTML = PREF.slots.map((cur, i) => '<label>' + '<span class="nr">' + (i + 1) + '</span><select id="pick-' + i + '" aria-label="Wert ' + (i + 1) + '">' +
+    Object.keys(CATALOG).map((k) => '<option value="' + k + '"' + (k === cur ? " selected" : "") + ">" + esc(CATALOG[k].label) + "</option>").join("") + "</select></label>").join("");
+  $("pick-overlay").hidden = false;
+  document.body.style.overflow = "hidden";
+  $("pick").focus();
+}
+function closePick() {
+  $("pick-overlay").hidden = true;
+  if (!sheet) document.body.style.overflow = "";
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+}
+function initPick() {
+  $("btn-pick").addEventListener("click", (e) => openPick(e.currentTarget));
+  $("pick-cancel").addEventListener("click", closePick);
+  $("pick-overlay").addEventListener("click", (e) => { if (e.target === $("pick-overlay")) closePick(); });
+  $("pick-reset").addEventListener("click", () => { SLOT_DEFAULT.forEach((k, i) => { $("pick-" + i).value = k; }); });
+  $("pick-save").addEventListener("click", () => {
+    PREF.slots = PREF.slots.map((_, i) => $("pick-" + i).value);
+    store.set("goodwe.slots", PREF.slots);
+    renderRings(); closePick();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("pick-overlay").hidden) closePick(); else if (sheet) closeSheet();
+  });
 }
 
 /* ---------- Energie-Bilanz ---------- */
 
-async function renderEnergy() {
-  const period = $("energy-period").value;
-  const wrap = $("energy-cards");
-  const meta = $("energy-meta");
+async function renderBalance() {
+  const body = $("bal-body"), meta = $("bal-meta");
+  $("bal-seg").innerHTML = segMarkupBtns(PERIODS, balPeriod, "data-period");
   let b;
-  try {
-    b = await mcpCall("get_energy_balance", { period: period });
-  } catch (e) {
-    meta.textContent = "Fehler beim Laden der Bilanz: " + e.message;
-    return;
-  }
+  try { b = await api("get_energy_balance", { period: balPeriod }); }
+  catch (e) { meta.textContent = "Fehler beim Laden der Bilanz: " + e.message; return; }
   if (b.error) { meta.textContent = "Fehler: " + b.error; return; }
-  const cards = [];
-  cards.push(mkCard("PV-Produktion", fmt(b.pv.production_kwh, true), "kWh", "e_day"));
-  cards.push(mkCard("Verbrauch", fmt(b.consumption.total_kwh, true), "kWh", "e_load_day"));
-  cards.push(mkCard("Netzbezug", fmt(b.grid.imported_kwh, true), "kWh", "Import"));
-  cards.push(mkCard("Einspeisung", fmt(b.grid.exported_kwh, true), "kWh", "Export"));
-  cards.push(mkCard("Direktverbrauch PV", fmt(b.pv.direct_use_kwh, true), "kWh", "PV → Haus"));
-  cards.push(mkCard("Batterie geladen", fmt(b.battery.charged_kwh, true), "kWh", ""));
-  cards.push(mkCard("Batterie entladen", fmt(b.battery.discharged_kwh, true), "kWh", ""));
-  cards.push(mkCard("Autarkie", fmt(b.autarky_percent, true), "%", ""));
-  cards.push(mkCard("Eigenverbrauch", fmt(b.self_consumption_percent, true), "%", ""));
-  cards.push(mkCard("Netzabhängigkeit", fmt(b.grid_dependency_percent, true), "%", ""));
-  wrap.innerHTML = cards.join("");
-  const from = new Date(b.from).toLocaleString("de-DE");
-  const to = new Date(b.to).toLocaleString("de-DE");
-  meta.textContent = from + " – " + to +
-    " · Vollständigkeit: " + fmt(b.data_completeness * 100, true) + " %" +
-    (b.estimate ? " · Schätzung" : "") +
-    (b.source === "power_integration" ? " · Quelle: Leistungs-Integration" : " · Quelle: Wechselrichter-Zähler");
+  balView = b;
+  if (balPeriod === "today") balToday = b;
+  const k = (v) => nf1.format(v);
+  body.innerHTML = statRowsTiles([["PV-Produktion", k(b.pv.production_kwh), "kWh"], ["Verbrauch", k(b.consumption.total_kwh), "kWh"], ["Netzbezug", k(b.grid.imported_kwh), "kWh"], ["Einspeisung", k(b.grid.exported_kwh), "kWh"]]) +
+    '<div class="two" style="margin-top:18px"><div><div class="sub-h">Verbrauch gedeckt durch</div>' + segMarkup([
+      { name: "Solaranlage direkt", tone: "pv", value: b.pv.direct_use_kwh }, { name: "Batterie", tone: "bat", value: b.battery.discharged_kwh }, { name: "Netz", tone: "grid", value: b.grid.imported_kwh }], "kWh", true) + '</div>' +
+    '<div><div class="sub-h">PV-Strom verwendet für</div>' + segMarkup([
+      { name: "Haus direkt", tone: "house", value: b.pv.direct_use_kwh }, { name: "Batterie laden", tone: "bat", value: b.battery.charged_kwh }, { name: "Einspeisung", tone: "aux", value: b.grid.exported_kwh }], "kWh", true) + '</div></div>' +
+    '<div class="tiles" style="margin-top:18px">' + [["Autarkie", b.autarky_percent], ["Eigenverbrauch", b.self_consumption_percent], ["Netzabhängigkeit", b.grid_dependency_percent]].map((r) => '<div class="tile"><div class="k">' + r[0] + '</div><div class="n">' + nf0.format(r[1]) + "<small>%</small></div></div>").join("") + "</div>";
+  const from = new Date(b.from).toLocaleString("de-DE"), to = new Date(b.to).toLocaleString("de-DE");
+  meta.textContent = from + " – " + to + " · Vollständigkeit " + nf0.format(b.data_completeness * 100) + " %" + (b.estimate ? " · Schätzung" : "") + (b.source === "power_integration" ? " · Quelle: Leistungs-Integration" : " · Quelle: Wechselrichter-Zähler");
+  renderRings();
 }
+function statRowsTiles(rows) { return statRows(rows); }
 
-/* ---------- Stromverbrauch pro Tag ---------- */
+/* ---------- Verlauf-Reiter ---------- */
 
-async function renderDailyEnergy() {
-  const days = parseInt($("daily-days").value, 10);
-  const wrap = $("daily-chart");
-  const meta = $("daily-meta");
-  const sumEl = $("daily-sum");
+function renderChartSelect() {
+  const sel = $("chart-field");
+  const numeric = (state.fields || []).filter((f) => f.numeric), cur = sel.value;
+  const sig = numeric.map((f) => f.id).join("|");
+  if (sel.dataset.sig === sig) return;
+  sel.dataset.sig = sig;
+  sel.innerHTML = numeric.map((f) => '<option value="' + esc(f.id) + '">' + esc(f.name) + (f.unit ? " [" + esc(f.unit) + "]" : "") + "</option>").join("");
+  if (cur && numeric.some((f) => f.id === cur)) sel.value = cur;
+  else if (numeric.some((f) => f.id === "house_consumption")) sel.value = "house_consumption";
+}
+async function renderChart() {
+  const fieldId = $("chart-field").value, wrap = $("chart"), meta = $("chart-meta");
+  $("chart-win").innerHTML = segMarkupBtns(WINDOWS, chartWin, "data-win");
+  if (!fieldId) { wrap.innerHTML = ""; meta.textContent = ""; return; }
+  let pts;
+  try { pts = await loadSeries(fieldId, chartWin); } catch (e) { meta.textContent = "Fehler beim Laden der Historie: " + e.message; return; }
+  if (!pts.length) { wrap.innerHTML = '<div class="empty">Noch keine Daten in der Historie (Polling läuft alle 10 s).</div>'; meta.textContent = ""; return; }
+  const f = (state.fields || []).find((x) => x.id === fieldId), u = f && f.unit ? " " + f.unit : "";
+  wrap.innerHTML = lineChart(pts, { width: wrap.clientWidth || 600, height: 240, color: "var(--accent)", gid: "main", label: f ? f.name : fieldId });
+  const vals = pts.map((p) => p.v);
+  meta.textContent = pts.length + " Messpunkte · min " + nf2.format(Math.min(...vals)) + " · max " + nf2.format(Math.max(...vals)) + u + " · aktuell " + nf2.format(pts[pts.length - 1].v) + u;
+}
+function barFrame(W, H, pl, pr, pt, pb, maxV, labelsSvg, barsSvg) {
+  const y = (v) => pt + (maxV - v) / maxV * (H - pt - pb);
+  const grid = [0.25, 0.5, 0.75, 1].map((q) => '<line class="g" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(maxV * q).toFixed(1) + '" y2="' + y(maxV * q).toFixed(1) + '"/><text class="t" x="' + (pl - 7) + '" y="' + (y(maxV * q) + 4).toFixed(1) + '" text-anchor="end">' + nf0.format(maxV * q) + "</text>").join("");
+  return '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img">' + grid + barsSvg + labelsSvg + "</svg>";
+}
+async function renderPvStats() {
+  const wrap = $("pv-chart"), meta = $("pv-meta");
   let data;
-  try {
-    data = await mcpCall("get_daily_energy", { days: days });
-  } catch (e) {
-    meta.textContent = "Fehler beim Laden: " + e.message;
-    return;
-  }
-  const list = data.days || [];
-  if (list.length === 0) {
-    wrap.innerHTML = '<div class="empty">Noch keine Tagesdaten – wird ab dem ersten vollen Tag aufgebaut.</div>';
-    meta.textContent = "";
-    sumEl.textContent = "";
-    return;
-  }
-  const W = 1100, H = 240, padL = 58, padR = 14, padT = 14, padB = 30;
-  const maxVal = Math.max(1, ...list.map(d => Math.max(d.consumption_kwh, d.production_kwh)));
-  const n = list.length;
-  const bw = (W - padL - padR) / n;
-  const y = (v) => padT + (maxVal - v) / maxVal * (H - padT - padB);
-
+  try { data = await api("get_pv_stats"); } catch (e) { meta.textContent = "Fehler beim Laden der PV-Statistik: " + e.message; return; }
+  const hours = data.hours || [];
+  if (!hours.length) { wrap.innerHTML = '<div class="empty">Noch keine PV-Statistik, wird mit jedem Poll aufgebaut.</div>'; meta.textContent = ""; return; }
+  const W = Math.max(280, wrap.clientWidth || 600), H = 220, pl = 46, pr = 8, pt = 10, pb = 24;
+  const maxV = Math.max(...hours.map((h) => h.avg_w), 1), bw = (W - pl - pr) / 24, ch = H - pt - pb;
   let bars = "";
+  for (const h of hours) {
+    const bh = ch * (h.avg_w / maxV), best = data.best_hour && h.hour === data.best_hour.hour;
+    bars += '<rect x="' + (pl + h.hour * bw + bw * 0.14).toFixed(1) + '" y="' + (pt + ch - bh).toFixed(1) + '" width="' + (bw * 0.72).toFixed(1) + '" height="' + Math.max(bh, 0.5).toFixed(1) + '" rx="3" style="fill:' + (best ? "var(--c-pv)" : "var(--c-grid)") + ';opacity:' + (best ? 1 : 0.75) + '"><title>' + h.hour + " Uhr: Ø " + nf0.format(h.avg_w) + " W (" + h.samples + " Messungen)</title></rect>";
+  }
+  const labs = [0, 6, 12, 18, 23].map((hh) => '<text class="t" x="' + (pl + hh * bw + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + hh + "</text>").join("");
+  wrap.innerHTML = barFrame(W, H, pl, pr, pt, pb, maxV, labs, bars);
+  meta.textContent = data.best_hour ? "Beste Zeit: " + data.best_hour.hour + " Uhr mit Ø " + nf0.format(data.best_hour.avg_w) + " W (" + data.best_hour.samples + " Messungen), gemittelt über alle erfassten Tage." : "";
+}
+async function renderDaily() {
+  const wrap = $("daily-chart"), meta = $("daily-meta"), sumEl = $("daily-sum");
+  $("daily-seg").innerHTML = segMarkupBtns([[7, "7 Tage"], [14, "14 Tage"], [30, "30 Tage"]], dailyDays, "data-days");
+  let data;
+  try { data = await api("get_daily_energy", { days: dailyDays }); } catch (e) { meta.textContent = "Fehler beim Laden: " + e.message; return; }
+  const list = data.days || [];
+  if (!list.length) { wrap.innerHTML = '<div class="empty">Noch keine Tagesdaten, wird ab dem ersten vollen Tag aufgebaut.</div>'; meta.textContent = ""; sumEl.textContent = ""; return; }
+  const W = Math.max(280, wrap.clientWidth || 600), H = 240, pl = 46, pr = 8, pt = 12, pb = 26, n = list.length;
+  const maxV = Math.max(1, ...list.map((d) => Math.max(d.consumption_kwh, d.production_kwh))), bw = (W - pl - pr) / n, ch = H - pt - pb;
+  let bars = "", labs = "";
+  const step = Math.max(1, Math.ceil(n / (W < 480 ? 6 : 14)));
   list.forEach((d, i) => {
-    const x0 = padL + i * bw;
-    const cw = bw * 0.3;
-    const hc = Math.max(0, (H - padT - padB) * (d.consumption_kwh / maxVal));
-    const hp = Math.max(0, (H - padT - padB) * (d.production_kwh / maxVal));
-    bars +=
-      '<rect x="' + (x0 + bw * 0.2).toFixed(1) + '" y="' + (padT + (H - padT - padB) - hc).toFixed(1) +
-      '" width="' + cw.toFixed(1) + '" height="' + Math.max(hc, 0.5).toFixed(1) +
-      '" fill="#3da9fc" opacity="0.9"><title>' + d.date + ': Verbrauch ' +
-      fmt(d.consumption_kwh, true) + ' kWh' + (d.complete ? '' : ' (unvollständig)') + '</title></rect>' +
-      '<rect x="' + (x0 + bw * 0.55).toFixed(1) + '" y="' + (padT + (H - padT - padB) - hp).toFixed(1) +
-      '" width="' + cw.toFixed(1) + '" height="' + Math.max(hp, 0.5).toFixed(1) +
-      '" fill="#f1c40f" opacity="0.9"><title>' + d.date + ': Produktion ' +
-      fmt(d.production_kwh, true) + ' kWh</title></rect>';
-    // unvollständige Tage markieren
-    if (!d.complete) {
-      bars += '<text x="' + (x0 + bw / 2).toFixed(1) + '" y="' + (H - 4) +
-        '" fill="#8b98a5" font-size="10" text-anchor="middle">!</text>';
-    }
+    const x0 = pl + i * bw, cw = bw * 0.32, hc = ch * d.consumption_kwh / maxV, hp = ch * d.production_kwh / maxV;
+    bars += '<rect x="' + (x0 + bw * 0.16).toFixed(1) + '" y="' + (pt + ch - hc).toFixed(1) + '" width="' + cw.toFixed(1) + '" height="' + Math.max(hc, 0.5).toFixed(1) + '" rx="2.5" style="fill:var(--c-house);opacity:' + (d.complete ? 1 : 0.5) + '"><title>' + d.date + ": Verbrauch " + nf1.format(d.consumption_kwh) + " kWh" + (d.complete ? "" : " (unvollständig)") + '</title></rect>' +
+      '<rect x="' + (x0 + bw * 0.52).toFixed(1) + '" y="' + (pt + ch - hp).toFixed(1) + '" width="' + cw.toFixed(1) + '" height="' + Math.max(hp, 0.5).toFixed(1) + '" rx="2.5" style="fill:var(--c-pv)"><title>' + d.date + ": Produktion " + nf1.format(d.production_kwh) + " kWh</title></rect>";
+    if (i % step === 0) labs += '<text class="t" x="' + (x0 + bw / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + d.date.slice(8) + "." + d.date.slice(5, 7) + ".</text>";
   });
-
-  const labelStep = Math.max(1, Math.ceil(n / 14));
-  const labels = list.map((d, i) => {
-    if (i % labelStep !== 0) return "";
-    const lbl = d.date.slice(5).replace("-", ".");
-    return '<text x="' + (padL + i * bw + bw / 2).toFixed(1) + '" y="' + (H - 8) +
-      '" fill="#8b98a5" font-size="11" text-anchor="middle">' + lbl + "</text>";
-  }).join("");
-
-  const grid = [0.25, 0.5, 0.75, 1].map(f =>
-    '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(maxVal * f).toFixed(1) +
-    '" y2="' + y(maxVal * f).toFixed(1) + '" stroke="#2a3542" stroke-dasharray="4 4"/>' +
-    '<text x="' + (padL - 8) + '" y="' + (y(maxVal * f) + 4).toFixed(1) +
-    '" fill="#8b98a5" font-size="11" text-anchor="end">' + (maxVal * f).toLocaleString("de-DE", { maximumFractionDigits: 0 }) + '</text>'
-  ).join("");
-
-  wrap.innerHTML =
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="min-width:640px">' +
-    '<rect x="' + padL + '" y="' + padT + '" width="' + (W - padL - padR) + '" height="' + (H - padT - padB) + '" fill="#0f141a"/>' +
-    grid + bars + labels + '</svg>';
-
-  const totalCons = list.reduce((a, d) => a + d.consumption_kwh, 0);
-  const totalProd = list.reduce((a, d) => a + d.production_kwh, 0);
-  const complete = list.filter(d => d.complete).length;
-  meta.textContent = "Blau = Verbrauch · Gelb = PV-Produktion · „!“ = Tag mit Datenlücken";
-  sumEl.textContent = list.length + " Tage: Verbrauch Σ " + fmt(totalCons, true) +
-    " kWh · Produktion Σ " + fmt(totalProd, true) + " kWh · " + complete + " vollständig erfasst";
+  wrap.innerHTML = barFrame(W, H, pl, pr, pt, pb, maxV, labs, bars);
+  const tc = list.reduce((a, d) => a + d.consumption_kwh, 0), tp = list.reduce((a, d) => a + d.production_kwh, 0), cp = list.filter((d) => d.complete).length;
+  meta.textContent = "Violett = Verbrauch · Gelb = PV-Produktion · blasse Balken = Tag mit Datenlücken";
+  sumEl.textContent = list.length + " Tage: Verbrauch Σ " + nf1.format(tc) + " kWh · Produktion Σ " + nf1.format(tp) + " kWh · " + cp + " vollständig erfasst";
 }
 
-/* ---------- Laden / Refresh ---------- */
+/* ---------- Messwerte-Reiter ---------- */
 
-async function refresh() {
-  try {
-    const newState = await mcpCall("get_all");
-    const first = state === null;
-    state = newState;
-    if (first) {
-      // Standard-Auswahl: alle Felder, beim ersten Start alles
-      if (selection.size === 0) {
-        for (const f of state.fields) selection.add(f.id);
-        saveSelection();
-      }
-      renderGroups();
-      renderChartSelect();
+function renderGroups() {
+  const fields = state.fields || [], byGroup = {};
+  for (const f of fields) { const g = f.kind && KIND_LABELS[f.kind] ? f.kind : "OTHER"; (byGroup[g] = byGroup[g] || []).push(f); }
+  const order = ["PV", "AC", "UPS", "BAT", "GRID", "BMS", "OTHER"].filter((g) => byGroup[g]);
+  const el = $("groups"); el.innerHTML = "";
+  const q = $("search").value.trim().toLowerCase();
+  for (const g of order) {
+    const list = byGroup[g], div = document.createElement("div");
+    div.className = "group";
+    const gbox = document.createElement("input"); gbox.type = "checkbox"; gbox.id = "grp-" + g; gbox.checked = list.some((f) => selection.has(f.id));
+    gbox.addEventListener("change", () => { for (const f of list) { if (gbox.checked) selection.add(f.id); else selection.delete(f.id); } saveSelection(); renderGroups(); renderCards(); });
+    const label = document.createElement("label"); label.htmlFor = gbox.id; label.appendChild(gbox);
+    label.appendChild(document.createTextNode(KIND_LABELS[g] || g));
+    const cnt = document.createElement("span"); cnt.className = "count"; cnt.textContent = " (" + list.length + ")"; label.appendChild(cnt);
+    div.appendChild(label);
+    for (const f of list) {
+      const row = document.createElement("div"); row.className = "field";
+      row.style.display = !q || (f.name + " " + f.id).toLowerCase().includes(q) ? "" : "none";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "fld-" + f.id; cb.checked = selection.has(f.id);
+      cb.addEventListener("change", () => { if (cb.checked) selection.add(f.id); else selection.delete(f.id); saveSelection(); renderGroups(); renderCards(); });
+      const l2 = document.createElement("label"); l2.htmlFor = cb.id; l2.appendChild(cb);
+      l2.appendChild(document.createTextNode(f.name));
+      const fid = document.createElement("span"); fid.className = "fid"; fid.textContent = f.id; l2.appendChild(fid);
+      if (f.unit) { const u = document.createElement("span"); u.className = "unit"; u.textContent = "[" + f.unit + "]"; l2.appendChild(u); }
+      row.appendChild(l2); div.appendChild(row);
     }
-    renderStatus();
-    renderMetrics();
-    renderWarning();
-    renderCards();
-    renderSettings();
-    renderChartSelect(); // Feldliste kann sich erweitern
-  } catch (e) {
-    $("error-box").style.display = "block";
-    $("error-box").textContent = "⚠️ Verbindung zum MCP-Server fehlgeschlagen: " + e.message;
+    el.appendChild(div);
   }
 }
+function saveSelection() { store.set("goodwe.selected", [...selection]); }
+function renderCards() {
+  if (!state) return;
+  const fields = (state.fields || []).filter((f) => selection.has(f.id));
+  const stale = state.last_update ? (Date.now() - Date.parse(state.last_update)) / 1000 > 180 : false;
+  $("cards-meta").textContent = fields.length + " von " + (state.fields || []).length + " ausgewählt";
+  const cards = $("cards");
+  if (!fields.length) { cards.innerHTML = '<div class="empty">Keine Felder ausgewählt. Wähle unten Statistiken aus.</div>'; return; }
+  const rt = RT();
+  cards.innerHTML = fields.map((f) => '<div class="tile' + (stale ? " stale" : "") + '"><div class="k">' + esc(f.name) + '</div><div class="n">' + esc(fmt(rt[f.id], f.numeric)) + (f.unit ? "<small>" + esc(f.unit) + "</small>" : "") + '</div><div class="id">' + esc(f.id) + "</div></div>").join("");
+}
 
-/* ---------- Einstellungen (config.toml) ---------- */
+/* ---------- Gerät-Reiter ---------- */
 
+function renderDevice() {
+  const d = state.device || {};
+  const rows = [["Seriennummer", d.serial_number], ["Modell", d.model_name], ["Firmware", d.firmware], ["ARM-Firmware", d.arm_firmware]].filter((r) => r[1]);
+  $("device-dl").innerHTML = rows.length ? rows.map((r) => "<dt>" + r[0] + "</dt><dd>" + esc(r[1]) + "</dd>").join("") : '<dt>Status</dt><dd>Geräte-Info wird geladen …</dd>';
+  const s = state.settings || {}, keys = Object.keys(s).sort(), unsup = state.unsupported_settings || [];
+  $("settings-count").textContent = keys.length + (unsup.length ? " · " + unsup.length + " abgelehnt" : "");
+  $("settings-unsupported").textContent = unsup.length ? "Von der Firmware abgelehnt (nicht unterstützt): " + unsup.join(", ") : "";
+  $("settings-body").innerHTML = keys.map((k) => '<tr><td class="id">' + esc(k) + "</td><td>" + esc(fmt(s[k], false)) + "</td></tr>").join("");
+}
 async function loadConfigForm() {
   try {
-    const cfg = await mcpCall("get_config");
+    cfg = await api("get_config");
     $("cfg-capacity").value = cfg.battery_capacity_kwh;
-    $("cfg-threshold").value = cfg.warning_threshold_w;
     $("cfg-interval").value = cfg.poll_interval_seconds;
-    $("cfg-status").textContent = "";
-    $("cfg-status").className = "cfg-status";
+    $("cfg-pvmax").value = PREF.pvMax;
+    syncAlarmControls(); renderWarning(); renderRings();
+  } catch (e) { $("cfg-status").textContent = "Fehler beim Laden: " + e.message; }
+}
+function initDevice() {
+  $("btn-save-config").addEventListener("click", async () => {
+    const cap = parseFloat($("cfg-capacity").value), itv = parseFloat($("cfg-interval").value), pvm = parseFloat($("cfg-pvmax").value), st = $("cfg-status");
+    st.className = "save-note";
+    if (!isFinite(cap) || cap <= 0) { st.textContent = "Ungültige Batteriekapazität (muss > 0 sein)."; st.classList.add("bad"); return; }
+    if (!isFinite(itv) || itv < 2 || itv > 600) { st.textContent = "Ungültiges Intervall (2 bis 600 s)."; st.classList.add("bad"); return; }
+    if (!isFinite(pvm) || pvm < 500) { st.textContent = "Ungültige Ring-Skala (mindestens 500 W)."; st.classList.add("bad"); return; }
+    PREF.pvMax = pvm; store.set("goodwe.pvMax", pvm);
+    if (!cfg) cfg = { warning_threshold_w: thresholdW() };
+    cfg.battery_capacity_kwh = cap; cfg.poll_interval_seconds = itv;
+    st.textContent = "Speichern …";
+    try {
+      const r = await api("update_config", { battery_capacity_kwh: cap, warning_threshold_w: thresholdW(), poll_interval_seconds: itv });
+      if (r && r.ok === false) throw new Error(r.error || "unbekannt");
+      st.className = "save-note ok"; st.textContent = "Gespeichert, gilt ab dem nächsten Poll.";
+      renderRings();
+    } catch (e) { st.className = "save-note bad"; st.textContent = "Fehler: " + e.message; }
+  });
+}
+
+/* ---------- Reiter, Laden, Takt ---------- */
+
+function setTab(tab) {
+  if (!["overview", "history", "values", "device"].includes(tab)) tab = "overview";
+  PREF.tab = tab; store.set("goodwe.tab", tab);
+  for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
+  for (const p of document.querySelectorAll(".panel")) p.hidden = p.id !== "tab-" + tab;
+  if (tab === "history") { renderChart(); renderPvStats(); renderDaily(); }
+}
+async function refresh() {
+  try {
+    const ns = await api("get_all");
+    const first = state === null;
+    state = ns;
+    if (first && selection.size === 0) { for (const f of state.fields) selection.add(f.id); saveSelection(); }
+    if (first) { renderGroups(); }
+    renderChartSelect();
+    renderStatus(); renderWarning(); renderRings(); renderCards(); renderDevice();
+    syncAlarmControls();
+    if (sheet) renderSheet();
   } catch (e) {
-    $("cfg-status").textContent = "Fehler beim Laden: " + e.message;
+    const eb = $("error-box"); eb.hidden = false; eb.textContent = "Verbindung zum MCP-Server fehlgeschlagen: " + e.message;
+  }
+}
+function initControls() {
+  for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
+  $("bal-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { balPeriod = b.dataset.period; renderBalance(); } });
+  $("chart-win").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { chartWin = Number(b.dataset.win); renderChart(); } });
+  $("daily-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { dailyDays = Number(b.dataset.days); renderDaily(); } });
+  $("chart-field").addEventListener("change", renderChart);
+  $("btn-refresh-chart").addEventListener("click", renderChart);
+  $("btn-all").addEventListener("click", () => { for (const f of state.fields || []) selection.add(f.id); saveSelection(); renderGroups(); renderCards(); });
+  $("btn-none").addEventListener("click", () => { selection.clear(); saveSelection(); renderGroups(); renderCards(); });
+  $("btn-default").addEventListener("click", () => {
+    selection.clear();
+    const CORE = ["battery_soc", "pbattery1", "ppv", "active_power", "house_consumption", "e_total", "e_day", "vgrid", "temperature", "battery_charge_limit"];
+    for (const f of state.fields || []) if (CORE.includes(f.id)) selection.add(f.id);
+    saveSelection(); renderGroups(); renderCards();
+  });
+  $("search").addEventListener("input", renderGroups);
+  let rz = null;
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (sheet) renderSheet(); if (PREF.tab === "history") { renderChart(); renderPvStats(); renderDaily(); } }, 200); });
+  if (DEMO) {
+    $("demo-pill").hidden = false; $("demo-load").hidden = false;
+    $("demo-load").addEventListener("click", () => {
+      demo.boost = demo.boost ? 0 : 2600;
+      $("demo-load").textContent = demo.boost ? "Last beenden" : "Last simulieren";
+      refresh();
+    });
   }
 }
 
-$("btn-save-config").addEventListener("click", async () => {
-  const cap = parseFloat($("cfg-capacity").value);
-  const thr = parseFloat($("cfg-threshold").value);
-  const itv = parseFloat($("cfg-interval").value);
-  const status = $("cfg-status");
-  status.className = "cfg-status";
-  if (!isFinite(cap) || cap <= 0) { status.textContent = "Ungültige Batteriekapazität (muss > 0 sein)."; return; }
-  if (!isFinite(thr) || thr < 0) { status.textContent = "Ungültige Warnschwelle (>= 0)."; return; }
-  if (!isFinite(itv) || itv < 2 || itv > 600) { status.textContent = "Ungültiges Intervall (2–600 s)."; return; }
-  status.textContent = "Speichern …";
-  try {
-    const result = await mcpCall("update_config", {
-      battery_capacity_kwh: cap,
-      warning_threshold_w: thr,
-      poll_interval_seconds: itv,
-    });
-    if (result.ok) {
-      status.className = "cfg-status ok";
-      status.textContent = "Gespeichert ✓ – übernommen ab dem nächsten Poll.";
-    } else {
-      status.className = "cfg-status";
-      status.textContent = "Fehler: " + (result.error || "unbekannt");
-    }
-  } catch (e) {
-    status.className = "cfg-status";
-    status.textContent = "Fehler: " + e.message;
-  }
-});
-
-$("btn-all").addEventListener("click", () => {
-  for (const f of state.fields || []) selection.add(f.id);
-  saveSelection(); renderGroups(); renderCards();
-});
-$("btn-none").addEventListener("click", () => {
-  selection.clear(); saveSelection(); renderGroups(); renderCards();
-});
-$("btn-default").addEventListener("click", () => {
-  selection.clear();
-  const CORE = ["battery_soc", "pbattery1", "ppv", "active_power", "house_consumption", "e_total", "e_day", "vgrid", "temperature", "battery_charge_limit"];
-  for (const f of state.fields || []) if (CORE.includes(f.id)) selection.add(f.id);
-  saveSelection(); renderGroups(); renderCards();
-});
-$("btn-refresh-chart").addEventListener("click", renderChart);
-$("chart-field").addEventListener("change", renderChart);
-$("chart-window").addEventListener("change", renderChart);
-$("search").addEventListener("input", (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  document.querySelectorAll(".group .field").forEach(row => {
-    row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
-  });
-});
-
-loadSelection();
+initAlarm(); initSheet(); initPick(); initDevice(); initControls();
+setTab(PREF.tab);
 refresh();
-renderChart();
 loadConfigForm();
-renderPvStats();
-renderEnergy();
-renderDailyEnergy();
-setInterval(refresh, 10000); // UI alle 10 s aktualisieren (Polling läuft ebenfalls alle 10 s)
-setInterval(renderPvStats, 60000); // PV-Profil jede Minute neu
-setInterval(renderEnergy, 60000); // Energie-Bilanz jede Minute neu
-setInterval(renderDailyEnergy, 60000); // Tagesverbrauch jede Minute neu
-$("energy-period").addEventListener("change", renderEnergy);
-$("btn-refresh-energy").addEventListener("click", renderEnergy);
-$("daily-days").addEventListener("change", renderDailyEnergy);
-$("btn-refresh-daily").addEventListener("click", renderDailyEnergy);
+renderBalance();
+setInterval(refresh, 10000);
+setInterval(renderStatus, 1000);
+setInterval(renderBalance, 60000);
+setInterval(() => { if (PREF.tab === "history") { renderChart(); renderPvStats(); renderDaily(); } }, 60000);
 </script>
+
 </body>
 </html>
