@@ -424,6 +424,15 @@ td.id { font-family: var(--f-mono); font-size: 12px; color: var(--ink3); }
       <div class="chart-meta" id="daily-meta"></div>
       <div class="chart-meta" id="daily-sum"></div>
     </section>
+    <section class="card">
+      <div class="head"><h2>Erzeugung &amp; Verbrauch je Stunde</h2>
+        <select id="hourly-date" aria-label="Tag"></select>
+        <button class="btn" id="btn-refresh-hourly" type="button">Aktualisieren</button>
+      </div>
+      <div class="chart-box" id="hourly-chart"></div>
+      <div class="chart-meta" id="hourly-meta"></div>
+      <div class="chart-meta" id="hourly-sum"></div>
+    </section>
   </main>
 
   <!-- Messwerte -->
@@ -1189,6 +1198,62 @@ async function renderDaily() {
   const tc = list.reduce((a, d) => a + d.consumption_kwh, 0), tp = list.reduce((a, d) => a + d.production_kwh, 0), cp = list.filter((d) => d.complete).length;
   meta.textContent = "Violett = Verbrauch · Gelb = PV-Produktion · blasse Balken = Tag mit Datenlücken";
   sumEl.textContent = list.length + " Tage: Verbrauch Σ " + nf1.format(tc) + " kWh · Produktion Σ " + nf1.format(tp) + " kWh · " + cp + " vollständig erfasst";
+  // final gespeicherte Tage ergänzen (Vergleichswert aus energy_daily_final)
+  api("get_daily_snapshots", { days: dailyDays }).then((snap) => {
+    const fin = (snap.days || []).filter((d) => d.finalized).length;
+    sumEl.textContent += " · " + fin + " final gespeichert";
+  }).catch(() => {});
+}
+
+/* ---------- Stunden-Ansicht ---------- */
+
+let hourlyDate = null; // null = heute
+
+async function loadHourlyDates() {
+  try {
+    const snap = await api("get_daily_snapshots", { days: 30 });
+    const dates = (snap.days || []).map((d) => d.date);
+    if (!dates.includes(snap.to)) dates.push(snap.to);
+    dates.sort().reverse();
+    const sel = $("hourly-date");
+    const cur = hourlyDate || dates[0] || null;
+    sel.innerHTML = dates.map((d) => {
+      const lbl = d.slice(8) + "." + d.slice(5, 7) + "." + d.slice(0, 4);
+      return '<option value="' + d + '"' + (d === cur ? " selected" : "") + ">" + lbl + "</option>";
+    }).join("");
+    hourlyDate = cur;
+  } catch (e) { /* Auswahl bleibt leer, Chart nutzt heute */ }
+}
+
+async function renderHourly() {
+  const wrap = $("hourly-chart"), meta = $("hourly-meta"), sumEl = $("hourly-sum");
+  const date = hourlyDate || new Date().toLocaleDateString("sv-SE");
+  let data;
+  try { data = await api("get_hourly_energy", { date: date }); } catch (e) { meta.textContent = "Fehler beim Laden: " + e.message; return; }
+  if (data.error) { meta.textContent = "Fehler: " + data.error; return; }
+  const hours = data.hours || [];
+  if (!hours.length) {
+    wrap.innerHTML = '<div class="empty">Für diesen Tag sind noch keine Stundensnapshots gespeichert. Abgeschlossene Stunden werden automatisch festgeschrieben.</div>';
+    meta.textContent = ""; sumEl.textContent = "";
+    return;
+  }
+  const W = Math.max(280, wrap.clientWidth || 600), H = 220, pl = 46, pr = 8, pt = 10, pb = 24;
+  const maxV = Math.max(1, ...hours.map((h) => Math.max(h.production_kwh, h.consumption_kwh)));
+  const bw = (W - pl - pr) / 24, ch = H - pt - pb;
+  let bars = "";
+  for (const h of hours) {
+    const x0 = pl + h.hour * bw, cw = bw * 0.36;
+    const hc = ch * h.consumption_kwh / maxV, hp = ch * h.production_kwh / maxV;
+    bars +=
+      '<rect x="' + (x0 + bw * 0.12).toFixed(1) + '" y="' + (pt + ch - hc).toFixed(1) + '" width="' + cw.toFixed(1) + '" height="' + Math.max(hc, 0.5).toFixed(1) + '" rx="2.5" style="fill:var(--c-house)"><title>' + h.hour + ":00 Verbrauch " + nf1.format(h.consumption_kwh) + " kWh</title></rect>" +
+      '<rect x="' + (x0 + bw * 0.52).toFixed(1) + '" y="' + (pt + ch - hp).toFixed(1) + '" width="' + cw.toFixed(1) + '" height="' + Math.max(hp, 0.5).toFixed(1) + '" rx="2.5" style="fill:var(--c-pv)"><title>' + h.hour + ":00 Erzeugung " + nf1.format(h.production_kwh) + " kWh</title></rect>";
+  }
+  const labs = [0, 6, 12, 18, 23].map((hh) => '<text class="t" x="' + (pl + hh * bw + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + hh + "</text>").join("");
+  wrap.innerHTML = barFrame(W, H, pl, pr, pt, pb, maxV, labs, bars);
+  const tc = hours.reduce((a, h) => a + h.consumption_kwh, 0);
+  const tp = hours.reduce((a, h) => a + h.production_kwh, 0);
+  meta.textContent = "Violett = Verbrauch · Gelb = Erzeugung" + (data.finalized ? " · Tag final gespeichert" : " · Tag läuft, Stunden werden stündlich festgeschrieben");
+  sumEl.textContent = hours.length + " Stunden: Verbrauch Σ " + nf1.format(tc) + " kWh · Erzeugung Σ " + nf1.format(tp) + " kWh";
 }
 
 /* ---------- Messwerte-Reiter ---------- */
@@ -1281,7 +1346,7 @@ function setTab(tab) {
   PREF.tab = tab; store.set("goodwe.tab", tab);
   for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
   for (const p of document.querySelectorAll(".panel")) p.hidden = p.id !== "tab-" + tab;
-  if (tab === "history") { renderChart(); renderPvStats(); renderDaily(); }
+  if (tab === "history") { renderChart(); renderPvStats(); renderDaily(); renderHourly(); }
 }
 async function refresh() {
   try {
@@ -1303,6 +1368,8 @@ function initControls() {
   $("bal-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { balPeriod = b.dataset.period; renderBalance(); } });
   $("chart-win").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { chartWin = Number(b.dataset.win); renderChart(); } });
   $("daily-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { dailyDays = Number(b.dataset.days); renderDaily(); } });
+  $("hourly-date").addEventListener("change", () => { hourlyDate = $("hourly-date").value; renderHourly(); });
+  $("btn-refresh-hourly").addEventListener("click", renderHourly);
   $("chart-field").addEventListener("change", renderChart);
   $("btn-refresh-chart").addEventListener("click", renderChart);
   $("btn-all").addEventListener("click", () => { for (const f of state.fields || []) selection.add(f.id); saveSelection(); renderGroups(); renderCards(); });
@@ -1315,7 +1382,7 @@ function initControls() {
   });
   $("search").addEventListener("input", renderGroups);
   let rz = null;
-  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (sheet) renderSheet(); if (PREF.tab === "history") { renderChart(); renderPvStats(); renderDaily(); } }, 200); });
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (sheet) renderSheet(); if (PREF.tab === "history") { renderChart(); renderPvStats(); renderDaily(); renderHourly(); } }, 200); });
   if (DEMO) {
     $("demo-pill").hidden = false; $("demo-load").hidden = false;
     $("demo-load").addEventListener("click", () => {
@@ -1331,10 +1398,11 @@ setTab(PREF.tab);
 refresh();
 loadConfigForm();
 renderBalance();
+loadHourlyDates();
 setInterval(refresh, 10000);
 setInterval(renderStatus, 1000);
 setInterval(renderBalance, 60000);
-setInterval(() => { if (PREF.tab === "history") { renderChart(); renderPvStats(); renderDaily(); } }, 60000);
+setInterval(() => { if (PREF.tab === "history") { renderChart(); renderPvStats(); renderDaily(); renderHourly(); } }, 60000);
 </script>
 
 </body>

@@ -92,4 +92,17 @@ def create_app(store: DataStore) -> FastAPI:
         """Stromverbrauch je Tag für die letzten N Tage."""
         return calculator.compute_daily(days)
 
+    @app.get("/api/daily_snapshots")
+    async def get_daily_snapshots(days: int = Query(default=14, ge=1, le=400)):
+        """Final gespeicherte Tageswerte (Vergleich zwischen Tagen)."""
+        return calculator.compute_daily_snapshots(days)
+
+    @app.get("/api/hourly_energy")
+    async def get_hourly_energy(date: str | None = Query(default=None)):
+        """Je Stunde gespeicherte Energie eines Tages (YYYY-MM-DD)."""
+        try:
+            return calculator.compute_hourly(date)
+        except ValueError as exc:
+            return {"error": str(exc)}
+
     return app

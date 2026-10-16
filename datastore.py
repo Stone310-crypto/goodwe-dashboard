@@ -10,7 +10,7 @@ import sqlite3
 import threading
 import time
 from collections import deque
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Deque, Dict, Optional
@@ -90,6 +90,8 @@ class DataStore:
         # Energie-Zähler-Deltas (Kern-Prozess)
         self._prev_counters: Optional[dict] = None
         self._last_counter_ts: Optional[float] = None
+        # Cursor für den Stunden-/Tagesabschluss
+        self._finalize_cursor: Optional[tuple] = None
 
         # Persistente Historie (SQLite) – überlebt Neustarts des Dienstes
         self._db: Optional[sqlite3.Connection] = None
@@ -125,10 +127,32 @@ class DataStore:
                 "pv_wh REAL NOT NULL, import_wh REAL NOT NULL, export_wh REAL NOT NULL,"
                 "load_wh REAL NOT NULL, bat_charge_wh REAL NOT NULL, bat_discharge_wh REAL NOT NULL)"
             )
-            # Migration: Tagesspalte für die Tages-Statistik
+            # Migration: Tages-/Stundenspalte für die Tages-Statistik
             cols = [r[1] for r in self._db.execute("PRAGMA table_info(energy_delta)").fetchall()]
             if "day" not in cols:
                 self._db.execute("ALTER TABLE energy_delta ADD COLUMN day TEXT")
+            if "hour" not in cols:
+                self._db.execute("ALTER TABLE energy_delta ADD COLUMN hour INTEGER")
+            # Stundensnapshots: abgeschlossene Stunden (erzeugt/verbraucht je Stunde)
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS energy_hourly ("
+                "date TEXT NOT NULL, hour INTEGER NOT NULL,"
+                "pv_wh REAL NOT NULL, import_wh REAL NOT NULL, export_wh REAL NOT NULL,"
+                "load_wh REAL NOT NULL, bat_charge_wh REAL NOT NULL, bat_discharge_wh REAL NOT NULL,"
+                "samples INTEGER NOT NULL, finalized_at TEXT NOT NULL,"
+                "PRIMARY KEY (date, hour))"
+            )
+            # Tagesfinale: der endgültige Tageswert (23:59 bzw. nach Tageswechsel)
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS energy_daily_final ("
+                "date TEXT PRIMARY KEY,"
+                "pv_wh REAL NOT NULL, import_wh REAL NOT NULL, export_wh REAL NOT NULL,"
+                "load_wh REAL NOT NULL, bat_charge_wh REAL NOT NULL, bat_discharge_wh REAL NOT NULL,"
+                "samples INTEGER NOT NULL, finalized_at TEXT NOT NULL)"
+            )
+            self._db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_energy_delta_day_hour ON energy_delta(day, hour)"
+            )
             self._db.commit()
             rows = self._db.execute(
                 'SELECT ts, iso, "values" FROM history ORDER BY ts DESC LIMIT ?',
@@ -307,6 +331,7 @@ class DataStore:
             self._persist_history_point(self._history[-1])
             self._persist_snapshot()
             self._update_energy_counters()
+            self._finalize_energy_periods()
 
     def _update_energy_counters(self) -> None:
         """Persistiert Zähler-Deltas (kWh → Wh) der Wechselrichter-Tageszähler.
@@ -345,24 +370,16 @@ class DataStore:
 
         if self._db is not None:
             try:
-                # Alte Zeilen ohne Tagesspalte nachpflegen (einmalig nach Migration)
-                missing = self._db.execute(
-                    "SELECT ts FROM energy_delta WHERE day IS NULL LIMIT 5000"
-                ).fetchall()
-                for (ts,) in missing:
-                    day = datetime.fromtimestamp(ts).astimezone().strftime("%Y-%m-%d")
-                    self._db.execute(
-                        "UPDATE energy_delta SET day=? WHERE ts=?", (day, ts)
-                    )
                 self._db.execute(
                     "INSERT OR REPLACE INTO energy_delta "
                     "(ts, iso, dt, pv_wh, import_wh, export_wh, load_wh, "
-                    "bat_charge_wh, bat_discharge_wh, day) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "bat_charge_wh, bat_discharge_wh, day, hour) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (now_ts, _now_iso(), dt, deltas["pv_wh"], deltas["import_wh"],
                      deltas["export_wh"], deltas["load_wh"],
                      deltas["bat_charge_wh"], deltas["bat_discharge_wh"],
-                     datetime.now().astimezone().strftime("%Y-%m-%d")),
+                     datetime.now().astimezone().strftime("%Y-%m-%d"),
+                     datetime.now().astimezone().hour),
                 )
                 # Alte Deltas aufräumen (Retention)
                 self._db.execute(
@@ -396,6 +413,149 @@ class DataStore:
             ]
         except Exception as exc:
             log.warning("Tages-Aggregate konnten nicht gelesen werden: %s", exc)
+            return []
+
+    def _finalize_energy_periods(self) -> None:
+        """Schließt vergangene Stunden und Tage in den Snapshot-Tabellen ab.
+
+        - Jede abgelaufene Stunde: Zeile in energy_hourly (Erzeugung, Verbrauch, …)
+        - Jeder abgelaufene Tag: finaler Tageswert in energy_daily_final
+        - 23:59-Regel: in der letzten Minute des Tages wird der aktuelle
+          Tageswert vorab als finaler Stand gespeichert.
+        Aufholen nach Neustart/Lücken erfolgt automatisch über den Cursor.
+        """
+        if self._db is None:
+            return
+        try:
+            # Fehlende Tages-/Stundenspalten nachpflegen (Migration älterer Zeilen)
+            self._backfill_energy_period_columns()
+            now = datetime.now().astimezone()
+            today = now.strftime("%Y-%m-%d")
+            now_key = (today, now.hour)
+
+            if self._finalize_cursor is None:
+                row = self._db.execute(
+                    "SELECT date, MAX(hour) FROM energy_hourly "
+                    "WHERE date = (SELECT MAX(date) FROM energy_hourly)"
+                ).fetchone()
+                if row and row[0]:
+                    last_day, last_hour = row[0], int(row[1] or -1)
+                    if last_hour < 23:
+                        self._finalize_cursor = (last_day, last_hour + 1)
+                    else:
+                        nxt = datetime.strptime(last_day, "%Y-%m-%d") + timedelta(days=1)
+                        self._finalize_cursor = (nxt.strftime("%Y-%m-%d"), 0)
+                else:
+                    first = self._db.execute(
+                        "SELECT MIN(day) FROM energy_delta WHERE day IS NOT NULL"
+                    ).fetchone()[0]
+                    self._finalize_cursor = (first or today, 0)
+            cursor_day, cursor_hour = self._finalize_cursor
+
+            # Tagesabschluss: alle abgelaufenen Tage
+            self._db.execute(
+                "INSERT OR IGNORE INTO energy_daily_final "
+                "(date, pv_wh, import_wh, export_wh, load_wh, bat_charge_wh, "
+                "bat_discharge_wh, samples, finalized_at) "
+                "SELECT day, SUM(pv_wh), SUM(import_wh), SUM(export_wh), SUM(load_wh), "
+                "SUM(bat_charge_wh), SUM(bat_discharge_wh), COUNT(*), ? "
+                "FROM energy_delta WHERE day IS NOT NULL AND day < ? GROUP BY day",
+                (_now_iso(), today),
+            )
+
+            # 23:59-Regel: finaler Stand des heutigen Tages in der letzten Minute
+            if now.hour == 23 and now.minute >= 59:
+                self._db.execute(
+                    "INSERT OR REPLACE INTO energy_daily_final "
+                    "(date, pv_wh, import_wh, export_wh, load_wh, bat_charge_wh, "
+                    "bat_discharge_wh, samples, finalized_at) "
+                    "SELECT day, SUM(pv_wh), SUM(import_wh), SUM(export_wh), SUM(load_wh), "
+                    "SUM(bat_charge_wh), SUM(bat_discharge_wh), COUNT(*), ? "
+                    "FROM energy_delta WHERE day = ?",
+                    (_now_iso(), today),
+                )
+
+            # Stundenabschluss: alle Stunden vor der aktuellen, ab Cursor
+            if (cursor_day, cursor_hour) < now_key:
+                self._db.execute(
+                    "INSERT OR IGNORE INTO energy_hourly "
+                    "(date, hour, pv_wh, import_wh, export_wh, load_wh, "
+                    "bat_charge_wh, bat_discharge_wh, samples, finalized_at) "
+                    "SELECT day, hour, SUM(pv_wh), SUM(import_wh), SUM(export_wh), "
+                    "SUM(load_wh), SUM(bat_charge_wh), SUM(bat_discharge_wh), COUNT(*), ? "
+                    "FROM energy_delta "
+                    "WHERE day IS NOT NULL AND hour IS NOT NULL "
+                    "AND (day > ? OR (day = ? AND hour >= ?)) "
+                    "AND (day < ? OR (day = ? AND hour < ?)) "
+                    "GROUP BY day, hour",
+                    (_now_iso(), cursor_day, cursor_day, cursor_hour,
+                     today, today, now.hour),
+                )
+                self._finalize_cursor = now_key
+            self._db.commit()
+        except Exception as exc:
+            log.warning("Periodenabschluss (Stunden/Tage) fehlgeschlagen: %s", exc)
+
+    def _backfill_energy_period_columns(self) -> None:
+        """Setzt day/hour für ältere energy_delta-Zeilen nach (einmalig je Charge)."""
+        if self._db is None:
+            return
+        missing = self._db.execute(
+            "SELECT ts FROM energy_delta WHERE day IS NULL OR hour IS NULL LIMIT 20000"
+        ).fetchall()
+        for (ts,) in missing:
+            local = datetime.fromtimestamp(ts).astimezone()
+            self._db.execute(
+                "UPDATE energy_delta SET day=?, hour=? WHERE ts=?",
+                (local.strftime("%Y-%m-%d"), local.hour, ts),
+            )
+
+    def query_hourly_energy(self, date: str) -> list:
+        """Stundensnapshots eines Tages (abgeschlossene Stunden)."""
+        if self._db is None:
+            return []
+        try:
+            rows = self._db.execute(
+                "SELECT hour, pv_wh, import_wh, export_wh, load_wh, "
+                "bat_charge_wh, bat_discharge_wh, samples, finalized_at "
+                "FROM energy_hourly WHERE date = ? ORDER BY hour",
+                (date,),
+            ).fetchall()
+            return [
+                {
+                    "hour": r[0], "pv_wh": r[1], "import_wh": r[2],
+                    "export_wh": r[3], "load_wh": r[4],
+                    "bat_charge_wh": r[5], "bat_discharge_wh": r[6],
+                    "samples": r[7], "finalized_at": r[8],
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            log.warning("Stundensnapshots konnten nicht gelesen werden: %s", exc)
+            return []
+
+    def query_daily_finals(self, from_day: str, to_day: str) -> list:
+        """Final gespeicherte Tageswerte (energy_daily_final)."""
+        if self._db is None:
+            return []
+        try:
+            rows = self._db.execute(
+                "SELECT date, pv_wh, import_wh, export_wh, load_wh, "
+                "bat_charge_wh, bat_discharge_wh, samples, finalized_at "
+                "FROM energy_daily_final WHERE date >= ? AND date <= ? ORDER BY date",
+                (from_day, to_day),
+            ).fetchall()
+            return [
+                {
+                    "date": r[0], "pv_wh": r[1], "import_wh": r[2],
+                    "export_wh": r[3], "load_wh": r[4],
+                    "bat_charge_wh": r[5], "bat_discharge_wh": r[6],
+                    "samples": r[7], "finalized_at": r[8],
+                }
+                for r in rows
+            ]
+        except Exception as exc:
+            log.warning("Tagesfinale konnten nicht gelesen werden: %s", exc)
             return []
 
     def query_energy_deltas(self, from_ts: float, to_ts: float) -> list:

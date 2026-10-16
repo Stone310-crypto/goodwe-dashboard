@@ -272,6 +272,102 @@ class EnergyCalculator:
             "estimate": True,
         }
 
+    def compute_daily_snapshots(self, days: int = 14) -> dict:
+        """Final gespeicherte Tageswerte (energy_daily_final) + heute live.
+
+        Die finalen Werte werden um 23:59 bzw. direkt nach Tageswechsel
+        festgeschrieben und eignen sich für den Vergleich zwischen Tagen.
+        """
+        days = max(1, min(int(days), 400))
+        today = _local_now().date()
+        from_day = (today - timedelta(days=days - 1)).isoformat()
+        finals = {
+            r["date"]: r
+            for r in self.store.query_daily_finals(from_day, today.isoformat())
+        }
+
+        out = []
+        for offset in range(days - 1, -1, -1):
+            date = (today - timedelta(days=offset)).isoformat()
+            r = finals.get(date)
+            if r is not None:
+                out.append({
+                    "date": date,
+                    "consumption_kwh": round(r["load_wh"] / 1000.0, 3),
+                    "production_kwh": round(r["pv_wh"] / 1000.0, 3),
+                    "import_kwh": round(r["import_wh"] / 1000.0, 3),
+                    "export_kwh": round(r["export_wh"] / 1000.0, 3),
+                    "battery_charge_kwh": round(r["bat_charge_wh"] / 1000.0, 3),
+                    "battery_discharge_kwh": round(r["bat_discharge_wh"] / 1000.0, 3),
+                    "finalized": True,
+                    "finalized_at": r["finalized_at"],
+                    "source": "daily_final",
+                })
+
+        # Heute: Live-Zähler (noch nicht final)
+        runtime = self.store.snapshot().get("runtime", {})
+        counters = {}
+        for field in ("e_load_day", "e_day", "e_day_imp", "e_day_exp",
+                      "e_bat_charge_day", "e_bat_discharge_day"):
+            v = runtime.get(field)
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                counters[field] = float(v)
+        if len(counters) == 6:
+            out.append({
+                "date": today.isoformat(),
+                "consumption_kwh": round(counters["e_load_day"], 3),
+                "production_kwh": round(counters["e_day"], 3),
+                "import_kwh": round(counters["e_day_imp"], 3),
+                "export_kwh": round(counters["e_day_exp"], 3),
+                "battery_charge_kwh": round(counters["e_bat_charge_day"], 3),
+                "battery_discharge_kwh": round(counters["e_bat_discharge_day"], 3),
+                "finalized": False,
+                "finalized_at": None,
+                "source": "inverter_counters",
+            })
+
+        return {
+            "days": out,
+            "from": from_day,
+            "to": today.isoformat(),
+            "finalized_days": sum(1 for d in out if d["finalized"]),
+            "unit": "kWh",
+        }
+
+    def compute_hourly(self, date: str | None = None) -> dict:
+        """Stundensnapshots eines Tages: Erzeugung/Verbrauch je Stunde.
+
+        Args:
+            date: Datum als YYYY-MM-DD; None = heute.
+        """
+        if date is None:
+            date = _local_now().date().isoformat()
+        try:
+            parsed = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"Ungültiges Datum: {date} (erwartet YYYY-MM-DD)")
+        today = _local_now().date()
+        rows = self.store.query_hourly_energy(date)
+        return {
+            "date": date,
+            "finalized": parsed < today,  # vergangene Tage sind vollständig final
+            "hours": [
+                {
+                    "hour": r["hour"],
+                    "production_kwh": round(r["pv_wh"] / 1000.0, 3),
+                    "consumption_kwh": round(r["load_wh"] / 1000.0, 3),
+                    "import_kwh": round(r["import_wh"] / 1000.0, 3),
+                    "export_kwh": round(r["export_wh"] / 1000.0, 3),
+                    "battery_charge_kwh": round(r["bat_charge_wh"] / 1000.0, 3),
+                    "battery_discharge_kwh": round(r["bat_discharge_wh"] / 1000.0, 3),
+                    "samples": r["samples"],
+                    "finalized_at": r["finalized_at"],
+                }
+                for r in rows
+            ],
+            "unit": "kWh",
+        }
+
     def compute_autarky(self, period: str = "today") -> dict:
         bal = self.compute_balance(period)
         return {

@@ -71,6 +71,8 @@ Verfügbare Tools:
 | `get_autarky` | Autarkiegrad: (Verbrauch − Netzbezug) / Verbrauch; Args: `period` (today/yesterday/week/month/year) |
 | `get_energy_balance` | Vollständige Energie-Bilanz (PV, Verbrauch, Netz, Batterie, Autarkie, Eigenverbrauch); Args: `period` |
 | `get_daily_energy` | Stromverbrauch je Tag (plus Produktion, Netz, Batterie) für die letzten N Tage; Args: `days` (1–400) |
+| `get_daily_snapshots` | Final gespeicherte Tageswerte (23:59-Festschreibung) für den Tagesvergleich; Args: `days` |
+| `get_hourly_energy` | Je Stunde gespeicherte Erzeugung/Verbrauch eines Tages; Args: `date` (YYYY-MM-DD) |
 | `get_config` | Benutzer-Einstellungen aus `config.toml` |
 | `update_config` | Einstellungen ändern; Args: `battery_capacity_kwh`, `warning_threshold_w`, `poll_interval_seconds` |
 
@@ -106,6 +108,8 @@ Verfügbare Tools:
 | `GET /api/autarky` | Autarkiegrad, z. B. `?period=today` |
 | `GET /api/energy_balance` | Energie-Bilanz, z. B. `?period=week` |
 | `GET /api/daily_energy` | Stromverbrauch je Tag, z. B. `?days=14` |
+| `GET /api/daily_snapshots` | Final gespeicherte Tageswerte, z. B. `?days=30` |
+| `GET /api/hourly_energy` | Erzeugung/Verbrauch je Stunde, z. B. `?date=2026-10-15` |
 
 CORS ist für API und MCP freigeschaltet.
 
@@ -133,10 +137,16 @@ CORS ist für API und MCP freigeschaltet.
   (`data_completeness`), damit Offline-Lücken sichtbar bleiben.
 - **Live-Netzbezug**: aktuelle Netz-Leistung mit Richtung
   (`grid_in_out_label`: Importing/Exporting) in den Batterie-Karten.
-- **Stromverbrauch pro Tag**: Balkendiagramm (Verbrauch blau, PV-Produktion
+- **Stromverbrauch pro Tag**: Balkendiagramm (Verbrauch violett, PV-Produktion
   gelb) für die letzten 7/14/30 Tage. Heute stammt aus den Live-Zählern des
   Wechselrichters, vorherige Tage aus den pro Poll persistierten
-  Zähler-Deltas; Tage mit Datenlücken werden mit „!“ markiert.
+  Zähler-Deltas; Tage mit Datenlücken werden blass markiert.
+- **Final gespeicherte Tageswerte**: Jede abgelaufene Stunde wird als
+  Stundensnapshot festgeschrieben (Tabelle `energy_hourly`), und um 23:59
+  bzw. direkt nach Tageswechsel wird der endgültige Tageswert in
+  `energy_daily_final` gespeichert – ideal zum Vergleich zwischen Tagen.
+  Über die WebUI („Erzeugung & Verbrauch je Stunde“, Tag auswählbar) und
+  über `get_daily_snapshots`/`get_hourly_energy` abrufbar.
 - **Verbrauchswarnung**: überschreitet der Hausverbrauch die Schwelle,
   erscheint ein Warnbanner („⚡ Hoher Verbrauch …“); im Log wird die
   Überschreitung protokolliert.

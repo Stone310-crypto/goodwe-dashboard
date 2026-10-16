@@ -151,6 +151,32 @@ def create_server(store: DataStore) -> MCPServer:
         return calculator.compute_daily(days)
 
     @server.tool()
+    def get_daily_snapshots(days: int = 14) -> dict:
+        """Liefert die final gespeicherten Tageswerte (um 23:59 bzw. nach
+        Tageswechsel festgeschrieben) für den Vergleich zwischen Tagen.
+
+        Args:
+            days: Anzahl Tage (1–400). Heute wird live aus den Zählern
+                  ergänzt (finalized=False).
+        """
+        store.refresh_from_db()
+        return calculator.compute_daily_snapshots(days)
+
+    @server.tool()
+    def get_hourly_energy(date: str | None = None) -> dict:
+        """Liefert die je Stunde gespeicherte Energie (PV-Erzeugung, Verbrauch,
+        Netz, Batterie) eines Tages.
+
+        Args:
+            date: Datum als YYYY-MM-DD; None = heute.
+        """
+        store.refresh_from_db()
+        try:
+            return calculator.compute_hourly(date)
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+    @server.tool()
     def get_config() -> dict:
         """Liefert die Benutzer-Einstellungen aus config.toml (Batteriekapazität, Warnschwelle, Abfrage-Intervall)."""
         return user_config.load()
